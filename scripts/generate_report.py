@@ -13,6 +13,7 @@ from the index.
 
 See CLAUDE.md for the data-collection conventions this automates.
 """
+
 import argparse
 import datetime as dt
 import glob
@@ -20,7 +21,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 from collections import defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -33,7 +33,7 @@ CONFIG_SAMPLE = os.path.join(ROOT, "config.sample.json")
 CCUSAGE = "ccusage@20.0.17"
 
 
-def load_config(path: str = None) -> dict:
+def load_config(path: str | None = None) -> dict:
     """Read the site-specific config.
 
     Everything that identifies a particular setup — machine names, SSH targets,
@@ -45,11 +45,12 @@ def load_config(path: str = None) -> dict:
     try:
         with open(path, encoding="utf-8") as f:
             cfg = json.load(f)
-    except FileNotFoundError:
+    except FileNotFoundError as err:
         raise SystemExit(
             f"No config found at {path}.\n"
             f"Copy the template and edit it:  cp {os.path.basename(CONFIG_SAMPLE)} "
-            f"{os.path.basename(CONFIG)}")
+            f"{os.path.basename(CONFIG)}"
+        ) from err
 
     machines = cfg.get("machines") or []
     if not machines:
@@ -61,7 +62,8 @@ def load_config(path: str = None) -> dict:
     if len(local) != 1:
         raise SystemExit(
             f"{path}: exactly one machine must omit 'ssh' (the one you run this on); "
-            f"found {len(local)}.")
+            f"found {len(local)}."
+        )
     cfg.setdefault("timezone", "America/Chicago")
     cfg.setdefault("publishCommand", None)
     for m in machines:
@@ -89,10 +91,11 @@ def month_bounds(year_month: str):
     """(first, last) dates of a 'YYYY-MM' string."""
     try:
         first = dt.date.fromisoformat(year_month + "-01")
-    except ValueError:
-        raise SystemExit(f"--archive-month expects YYYY-MM, got {year_month!r}")
+    except ValueError as err:
+        raise SystemExit(f"--archive-month expects YYYY-MM, got {year_month!r}") from err
     nxt = (first.replace(day=28) + dt.timedelta(days=4)).replace(day=1)
     return first, nxt - dt.timedelta(days=1)
+
 
 MODEL_GROUPS = [
     ("fable5", "Fable 5", "#e3b341"),
@@ -189,8 +192,9 @@ def _codex_agent_gpt_rows(day: dict):
     """
     if "agents" not in day:
         raise RuntimeError(
-            f'unified payload for {day["period"]} lacks per-agent data; '
-            "collect the unified report with --by-agent")
+            f"unified payload for {day['period']} lacks per-agent data; "
+            "collect the unified report with --by-agent"
+        )
     for agent in day["agents"]:
         if agent.get("agent") != "codex":
             continue
@@ -216,8 +220,9 @@ def _merge_agent_breakdowns(day: dict) -> list:
     return [merged[name] for name in order]
 
 
-def normalize_codex_standard(unified_json: str, codex_json: str,
-                             live_date: str = None) -> str:
+def normalize_codex_standard(
+    unified_json: str, codex_json: str, live_date: str | None = None
+) -> str:
     """Replace Codex-CLI GPT costs with the explicit standard-speed costs.
 
     ccusage's unified ``daily`` command has ignored ``codex.defaults.speed``
@@ -248,10 +253,12 @@ def normalize_codex_standard(unified_json: str, codex_json: str,
         return period != live_date
 
     current_gpt = sum(
-        mb["cost"] for day in unified["daily"] if settled(day["period"])
-        for mb in _codex_agent_gpt_rows(day))
-    expected_gpt = sum(cost for date, cost in standard_by_date.items()
-                       if settled(date))
+        mb["cost"]
+        for day in unified["daily"]
+        if settled(day["period"])
+        for mb in _codex_agent_gpt_rows(day)
+    )
+    expected_gpt = sum(cost for date, cost in standard_by_date.items() if settled(date))
     using_fast = abs(current_gpt - expected_gpt) >= 0.005
 
     def fast_multiplier(model: str) -> float:
@@ -266,30 +273,39 @@ def normalize_codex_standard(unified_json: str, codex_json: str,
         standard = standard_by_date.get(day["period"], 0.0)
         if standard and not gpt_rows and settled(day["period"]):
             raise RuntimeError(
-                f'Codex standard cost exists without GPT breakdown on {day["period"]}')
+                f"Codex standard cost exists without GPT breakdown on {day['period']}"
+            )
         if using_fast:
             for mb in gpt_rows:
                 mb["cost"] /= fast_multiplier(mb["modelName"])
         calculated = sum(mb["cost"] for mb in gpt_rows)
         if settled(day["period"]) and abs(calculated - standard) >= 0.005:
             raise RuntimeError(
-                f'Codex daily normalization mismatch on {day["period"]}: '
-                f"expected={standard:.6f} calculated={calculated:.6f}")
+                f"Codex daily normalization mismatch on {day['period']}: "
+                f"expected={standard:.6f} calculated={calculated:.6f}"
+            )
         delegated_gpt += sum(
-            mb["cost"] for agent in day["agents"] if agent.get("agent") != "codex"
+            mb["cost"]
+            for agent in day["agents"]
+            if agent.get("agent") != "codex"
             for mb in agent.get("modelBreakdowns", [])
-            if mb["modelName"].startswith("gpt"))
+            if mb["modelName"].startswith("gpt")
+        )
         day["modelBreakdowns"] = _merge_agent_breakdowns(day)
         day["totalCost"] = sum(mb["cost"] for mb in day["modelBreakdowns"])
 
     unified["totals"]["totalCost"] = sum(day["totalCost"] for day in unified["daily"])
     normalized_gpt = sum(
-        mb["cost"] for day in unified["daily"] if settled(day["period"])
-        for mb in _codex_agent_gpt_rows(day))
+        mb["cost"]
+        for day in unified["daily"]
+        if settled(day["period"])
+        for mb in _codex_agent_gpt_rows(day)
+    )
     if abs(normalized_gpt - expected_gpt) >= 0.005:
         raise RuntimeError(
             f"Codex normalization mismatch: expected={expected_gpt:.6f} "
-            f"calculated={normalized_gpt:.6f}")
+            f"calculated={normalized_gpt:.6f}"
+        )
     unified["_llmUsageReport"] = {
         "codexFastPricingDetected": using_fast,
         "codexCostBeforeNormalization": current_gpt,
@@ -302,8 +318,9 @@ def normalize_codex_standard(unified_json: str, codex_json: str,
     return json.dumps(unified, separators=(",", ":"))
 
 
-def update_fast_incidents(speed_by_machine: dict, report_since=None,
-                          report_until=None, on_date=None):
+def update_fast_incidents(
+    speed_by_machine: dict, report_since=None, report_until=None, on_date=None
+):
     """Open/resolve durable Fast-mode incidents from this collection run."""
     today = on_date or dt.date.today().isoformat()
     try:
@@ -314,25 +331,33 @@ def update_fast_incidents(speed_by_machine: dict, report_since=None,
     incidents = history.setdefault("incidents", [])
     for machine, detected in speed_by_machine.items():
         open_incident = next(
-            (item for item in reversed(incidents)
-             if item["machine"] == machine and item.get("resolvedOn") is None),
-            None)
+            (
+                item
+                for item in reversed(incidents)
+                if item["machine"] == machine and item.get("resolvedOn") is None
+            ),
+            None,
+        )
         if detected and open_incident is None:
-            incidents.append({
-                "machine": machine,
-                "detectedOn": today,
-                "resolvedOn": None,
-                "observedReportFrom": report_since or today,
-                "observedReportThrough": report_until or today,
-                "evidence": "ccusage unified cost exceeded explicit standard-speed cost",
-            })
+            incidents.append(
+                {
+                    "machine": machine,
+                    "detectedOn": today,
+                    "resolvedOn": None,
+                    "observedReportFrom": report_since or today,
+                    "observedReportThrough": report_until or today,
+                    "evidence": "ccusage unified cost exceeded explicit standard-speed cost",
+                }
+            )
         elif detected:
             open_incident["observedReportFrom"] = min(
                 open_incident.get("observedReportFrom", report_since or today),
-                report_since or today)
+                report_since or today,
+            )
             open_incident["observedReportThrough"] = max(
                 open_incident.get("observedReportThrough", report_until or today),
-                report_until or today)
+                report_until or today,
+            )
         elif not detected and open_incident is not None:
             open_incident["resolvedOn"] = today
 
@@ -343,8 +368,9 @@ def update_fast_incidents(speed_by_machine: dict, report_since=None,
     os.replace(tmp, FAST_INCIDENTS)
 
 
-def collect_machine(machine: dict, since: str, until: str, tz: str,
-                    live_date: str = None) -> str:
+def collect_machine(
+    machine: dict, since: str, until: str, tz: str, live_date: str | None = None
+) -> str:
     """Run both ccusage passes for one machine and return normalized JSON.
 
     A machine with no 'ssh' target runs locally; anything else is driven over
@@ -355,31 +381,72 @@ def collect_machine(machine: dict, since: str, until: str, tz: str,
     ssh_target = machine.get("ssh")
 
     if not ssh_target:
-        unified = run([npx, "-y", CCUSAGE, "daily", "--since", since, "--until", until,
-                       "--timezone", tz, "--breakdown", "--by-agent", "--json",
-                       "--offline", "--config", PRICING_CONFIG])
-        codex = run([npx, "-y", CCUSAGE, "codex", "daily", "--since", since,
-                     "--until", until, "--timezone", tz, "--json", "--offline",
-                     "--speed", "standard", "--config", PRICING_CONFIG])
+        unified = run(
+            [
+                npx,
+                "-y",
+                CCUSAGE,
+                "daily",
+                "--since",
+                since,
+                "--until",
+                until,
+                "--timezone",
+                tz,
+                "--breakdown",
+                "--by-agent",
+                "--json",
+                "--offline",
+                "--config",
+                PRICING_CONFIG,
+            ]
+        )
+        codex = run(
+            [
+                npx,
+                "-y",
+                CCUSAGE,
+                "codex",
+                "daily",
+                "--since",
+                since,
+                "--until",
+                until,
+                "--timezone",
+                tz,
+                "--json",
+                "--offline",
+                "--speed",
+                "standard",
+                "--config",
+                PRICING_CONFIG,
+            ]
+        )
         return normalize_codex_standard(unified, codex, live_date)
 
     shell = machine["remoteShell"]
     remote_config = "/tmp/llm-usage-ccusage.json"
-    run(["scp", "-q", "-o", "ConnectTimeout=20", PRICING_CONFIG,
-         f"{ssh_target}:{remote_config}"])
+    run(["scp", "-q", "-o", "ConnectTimeout=20", PRICING_CONFIG, f"{ssh_target}:{remote_config}"])
     try:
-        remote = (f'{shell} "npx -y {CCUSAGE} daily --since {since} --until {until} '
-                  f'--timezone {tz} --breakdown --by-agent --json --offline '
-                  f'--config {remote_config}"')
+        remote = (
+            f'{shell} "npx -y {CCUSAGE} daily --since {since} --until {until} '
+            f"--timezone {tz} --breakdown --by-agent --json --offline "
+            f'--config {remote_config}"'
+        )
         unified = run(["ssh", "-o", "ConnectTimeout=20", ssh_target, remote])
-        remote_codex = (f'{shell} "npx -y {CCUSAGE} codex daily --since {since} '
-                        f'--until {until} --timezone {tz} --json --offline '
-                        f'--speed standard --config {remote_config}"')
+        remote_codex = (
+            f'{shell} "npx -y {CCUSAGE} codex daily --since {since} '
+            f"--until {until} --timezone {tz} --json --offline "
+            f'--speed standard --config {remote_config}"'
+        )
         codex = run(["ssh", "-o", "ConnectTimeout=20", ssh_target, remote_codex])
         return normalize_codex_standard(unified, codex, live_date)
     finally:
-        subprocess.run(["ssh", "-o", "ConnectTimeout=20", ssh_target,
-                        f"rm -f {remote_config}"], capture_output=True, text=True)
+        subprocess.run(
+            ["ssh", "-o", "ConnectTimeout=20", ssh_target, f"rm -f {remote_config}"],
+            capture_output=True,
+            text=True,
+        )
 
 
 def archive_window(cfg: dict, since: dt.date, until: dt.date, force=False) -> list:
@@ -415,15 +482,17 @@ def archive_window(cfg: dict, since: dt.date, until: dt.date, force=False) -> li
     return written
 
 
-def collect(cfg: dict, since: str, until: str, live_date: str = None) -> dict:
+def collect(cfg: dict, since: str, until: str, live_date: str | None = None) -> dict:
     """Run ccusage on every configured machine, writing rolling raw files.
 
     Returns {machine_id: path}. Every machine is collected and validated before
     any snapshot is replaced, so one unreachable machine leaves the previous
     good report intact rather than publishing a partial total.
     """
-    payloads = {m["id"]: collect_machine(m, since, until, cfg["timezone"], live_date)
-                for m in cfg["machines"]}
+    payloads = {
+        m["id"]: collect_machine(m, since, until, cfg["timezone"], live_date)
+        for m in cfg["machines"]
+    }
     for content in payloads.values():
         json.loads(content)
 
@@ -438,12 +507,15 @@ def collect(cfg: dict, since: str, until: str, live_date: str = None) -> dict:
             os.replace(tmp, path)
         speed_by_machine = {
             mid: json.loads(content)["_llmUsageReport"]["codexFastPricingDetected"]
-            for mid, content in payloads.items()}
+            for mid, content in payloads.items()
+        }
         update_fast_incidents(speed_by_machine, since, until)
         for machine, detected in speed_by_machine.items():
             if detected:
-                print(f"WARNING: Codex Fast pricing detected on {machine}; "
-                      "recorded incident and normalized report to Standard")
+                print(
+                    f"WARNING: Codex Fast pricing detected on {machine}; "
+                    "recorded incident and normalized report to Standard"
+                )
     finally:
         for tmp, _ in staged:
             if os.path.exists(tmp):
@@ -453,12 +525,12 @@ def collect(cfg: dict, since: str, until: str, live_date: str = None) -> dict:
 
 def load(files: dict, dates: list):
     """Merge per-day per-model across machines. files = {machine: path}."""
-    modelcost = defaultdict(lambda: defaultdict(float))   # date -> grp -> cost
-    agentcost = defaultdict(lambda: defaultdict(float))   # date -> agent -> cost
+    modelcost = defaultdict(lambda: defaultdict(float))  # date -> grp -> cost
+    agentcost = defaultdict(lambda: defaultdict(float))  # date -> agent -> cost
     machine_total = defaultdict(lambda: defaultdict(float))
     source_reported_total = defaultdict(float)
     tokens = defaultdict(float)
-    daytokens = defaultdict(float)                         # date -> total tokens
+    daytokens = defaultdict(float)  # date -> total tokens
     unclassified: set = set()
     unpriced: set = set()
     for mach, path in files.items():
@@ -484,11 +556,22 @@ def load(files: dict, dates: list):
                 # Only hosted providers we price can be "missing a price".
                 # Local models (Ollama, e.g. llama3.2:3b) are legitimately $0,
                 # so warning on those would cry wolf every run.
-                if agent != "other" and mb["cost"] == 0 and mb.get(
-                        "totalTokens", sum(
-                            mb.get(k, 0) for k in ("inputTokens", "outputTokens",
-                                                   "cacheReadTokens",
-                                                   "cacheCreationTokens"))):
+                if (
+                    agent != "other"
+                    and mb["cost"] == 0
+                    and mb.get(
+                        "totalTokens",
+                        sum(
+                            mb.get(k, 0)
+                            for k in (
+                                "inputTokens",
+                                "outputTokens",
+                                "cacheReadTokens",
+                                "cacheCreationTokens",
+                            )
+                        ),
+                    )
+                ):
                     unpriced.add(name)
                 modelcost[date][grp] += mb["cost"]
                 agentcost[date][agent] += mb["cost"]
@@ -496,12 +579,16 @@ def load(files: dict, dates: list):
                 machine_total[mach]["total"] += mb["cost"]
 
     for name in sorted(unclassified):
-        print(f"WARNING: {name} is not in MODEL_GROUPS/agent_of; charted as "
-              '"Other". Add it to scripts/generate_report.py.')
+        print(
+            f"WARNING: {name} is not in MODEL_GROUPS/agent_of; charted as "
+            '"Other". Add it to scripts/generate_report.py.'
+        )
     for name in sorted(unpriced):
-        print(f"WARNING: {name} reports tokens but $0 cost; ccusage's offline "
-              "pricing snapshot is missing it. Add a pricingOverrides entry to "
-              ".ccusage/ccusage.json.")
+        print(
+            f"WARNING: {name} reports tokens but $0 cost; ccusage's offline "
+            "pricing snapshot is missing it. Add a pricingOverrides entry to "
+            ".ccusage/ccusage.json."
+        )
 
     incidents = []
     if dates:
@@ -514,8 +601,7 @@ def load(files: dict, dates: list):
         incidents = []
         for item in history.get("incidents", []):
             incident_since = item.get("observedReportFrom", item["detectedOn"])
-            incident_until = item.get(
-                "observedReportThrough", item.get("resolvedOn") or until)
+            incident_until = item.get("observedReportThrough", item.get("resolvedOn") or until)
             if incident_since <= until and incident_until >= since:
                 incidents.append(item)
 
@@ -526,11 +612,18 @@ def load(files: dict, dates: list):
     model_totals = {g: sum(arrays[g]) for g, _, _ in MODEL_GROUPS}
     grand = sum(model_totals.values())
     day_tokens = [daytokens[d] for d in dates]
-    return dict(arrays=arrays, agents=agents, model_totals=model_totals,
-                grand=grand, machine_total=machine_total,
-                source_reported_total=source_reported_total,
-                tokens=tokens, day_tokens=day_tokens, dates=dates,
-                fast_incidents=incidents)
+    return {
+        "arrays": arrays,
+        "agents": agents,
+        "model_totals": model_totals,
+        "grand": grand,
+        "machine_total": machine_total,
+        "source_reported_total": source_reported_total,
+        "tokens": tokens,
+        "day_tokens": day_tokens,
+        "dates": dates,
+        "fast_incidents": incidents,
+    }
 
 
 def usd(v):
@@ -545,8 +638,7 @@ def summary_usd(v):
     return usd(v) if 0 < v < 1 else usd0(v)
 
 
-def render_report(d: dict, period_label: str, refreshed: str = "",
-                  cfg: dict = None) -> str:
+def render_report(d: dict, period_label: str, refreshed: str = "", cfg: dict | None = None) -> str:
     cfg = cfg or {"machines": [], "timezone": "America/Chicago"}
     machines = cfg["machines"]
     machine_names = " + ".join(m["label"] for m in machines)
@@ -567,7 +659,11 @@ def render_report(d: dict, period_label: str, refreshed: str = "",
     # peak day
     peak_i = max(complete, key=lambda i: daily_total[i]) if complete else 0
     peak_lbl = labels[peak_i] if n else ""
-    cache_pct = round(100 * d["tokens"]["cacheRead"] / d["tokens"]["total"], 1) if d["tokens"]["total"] else 0
+    cache_pct = (
+        round(100 * d["tokens"]["cacheRead"] / d["tokens"]["total"], 1)
+        if d["tokens"]["total"]
+        else 0
+    )
 
     # Fast-mode incidents are no longer rendered as a page banner (they pushed
     # the actual data below the fold). The guard itself is unchanged: incidents
@@ -575,18 +671,21 @@ def render_report(d: dict, period_label: str, refreshed: str = "",
     # stdout, so the cron log stays the alerting channel.
     for item in d.get("fast_incidents", []):
         if item.get("resolvedOn") is None:
-            print(f'WARNING: unresolved Codex Fast-mode incident on {item["machine"]} '
-                  f'(detected {item["detectedOn"]}); dollar figures are normalized to '
-                  "Standard but ChatGPT credit burn may be higher. Use /fast off.")
+            print(
+                f"WARNING: unresolved Codex Fast-mode incident on {item['machine']} "
+                f"(detected {item['detectedOn']}); dollar figures are normalized to "
+                "Standard but ChatGPT credit burn may be higher. Use /fast off."
+            )
 
     # ordered model rows by total desc
     ordered = sorted(MODEL_GROUPS, key=lambda g: d["model_totals"][g[0]], reverse=True)
     ordered = [g for g in ordered if d["model_totals"][g[0]] > 0]
 
     model_rows = "\n".join(
-        f'        <tr><td>{lbl.replace(" (Codex)", " (Codex)")}</td><td>{usd(d["model_totals"][k])}</td>'
-        f'<td>{round(100*d["model_totals"][k]/grand,1) if grand else 0}%</td></tr>'
-        for k, lbl, _ in ordered)
+        f"        <tr><td>{lbl.replace(' (Codex)', ' (Codex)')}</td><td>{usd(d['model_totals'][k])}</td>"
+        f"<td>{round(100 * d['model_totals'][k] / grand, 1) if grand else 0}%</td></tr>"
+        for k, lbl, _ in ordered
+    )
 
     # daily-model datasets (ordered desc by total)
     def jsarr(a):
@@ -597,38 +696,40 @@ def render_report(d: dict, period_label: str, refreshed: str = "",
 
     model_consts = "\n".join(f"const {k} = {jsarr(d['arrays'][k])};" for k, _, _ in ordered)
     model_datasets = ",\n    ".join(
-        f"{{ label: '{lbl}', data: {k}, backgroundColor: '{GCOLOR[k]}' }}"
-        for k, lbl, _ in ordered)
+        f"{{ label: '{lbl}', data: {k}, backgroundColor: '{GCOLOR[k]}' }}" for k, lbl, _ in ordered
+    )
     split_labels = ", ".join(
         f"'{lbl.replace(' (Codex)', '')} — {summary_usd(d['model_totals'][k])}'"
-        for k, lbl, _ in ordered)
+        for k, lbl, _ in ordered
+    )
     split_data = ", ".join(f"{d['model_totals'][k]:.6f}" for k, _, _ in ordered)
     split_colors = ", ".join(f"'{GCOLOR[k]}'" for k, _, _ in ordered)
 
-    agent_consts = "\n".join(
-        f"const agent_{a} = {jsarr(d['agents'][a])};" for a in active_agents)
+    agent_consts = "\n".join(f"const agent_{a} = {jsarr(d['agents'][a])};" for a in active_agents)
     agent_datasets = ",\n    ".join(
         f"{{ label: '{ALABEL[a]}', data: agent_{a}, backgroundColor: '{ACOLOR[a]}' }}"
-        for a in active_agents)
+        for a in active_agents
+    )
     agent_split_labels = ", ".join(f"'{ALABEL[a]}'" for a in active_agents)
     agent_split_data = ", ".join(f"{agent_totals[a]:.6f}" for a in active_agents)
     agent_split_colors = ", ".join(f"'{ACOLOR[a]}'" for a in active_agents)
     extra_agent_cards = "\n".join(
         f'    <div class="card"><div class="label">{ALABEL[a]}</div>'
         f'<div class="value">{summary_usd(agent_totals[a])}</div>'
-        f'<div class="note">{round(100*agent_totals[a]/grand,1) if grand else 0}% of spend</div></div>'
-        for a in ("gemini", "other") if agent_totals[a] > 0)
+        f'<div class="note">{round(100 * agent_totals[a] / grand, 1) if grand else 0}% of spend</div></div>'
+        for a in ("gemini", "other")
+        if agent_totals[a] > 0
+    )
 
     # by-machine, driven by the configured machine list rather than fixed names
     mt = d["machine_total"]
     machine_headers = "".join(f"<th>{ALABEL[a]}</th>" for a in active_agents)
 
     def machine_row(label, values):
-        cells = "".join(f'<td>{usd(values.get(a, 0))}</td>' for a in active_agents)
-        return f'        <tr><td>{label}</td>{cells}<td>{usd(values.get("total",0))}</td></tr>'
+        cells = "".join(f"<td>{usd(values.get(a, 0))}</td>" for a in active_agents)
+        return f"        <tr><td>{label}</td>{cells}<td>{usd(values.get('total', 0))}</td></tr>"
 
-    machine_rows = "\n".join(
-        machine_row(m["label"], mt.get(m["id"], {})) for m in machines)
+    machine_rows = "\n".join(machine_row(m["label"], mt.get(m["id"], {})) for m in machines)
     combined_agent_cells = "".join(f"<td>{usd(agent_totals[a])}</td>" for a in active_agents)
 
     # highlights: top 3 + quietest, over completed days only
@@ -637,49 +738,78 @@ def render_report(d: dict, period_label: str, refreshed: str = "",
     rank_lbl = ["Biggest day", "#2 day", "#3 day"]
     for r in range(min(3, len(order_days))):
         i = order_days[r]
-        hi.append(f'        <tr><td>{rank_lbl[r]} &mdash; {dates[i][5:]}</td><td>{usd(daily_total[i])}</td></tr>')
+        hi.append(
+            f"        <tr><td>{rank_lbl[r]} &mdash; {dates[i][5:]}</td><td>{usd(daily_total[i])}</td></tr>"
+        )
     if order_days:
         qi = order_days[-1]
-        hi.append(f'        <tr><td>Quietest day &mdash; {dates[qi][5:]}</td><td>{usd(daily_total[qi])}</td></tr>')
+        hi.append(
+            f"        <tr><td>Quietest day &mdash; {dates[qi][5:]}</td><td>{usd(daily_total[qi])}</td></tr>"
+        )
     if n > 1:
-        hi.append(f'        <tr><td>Today so far &mdash; {dates[-1][5:]}</td>'
-                  f'<td>{usd(daily_total[-1])}</td></tr>')
-    hi.append(f'        <tr><td>Cache reads (combined)</td><td>{d["tokens"]["cacheRead"]/1e9:.1f}B tokens</td></tr>')
-    hi.append(f'        <tr><td>Output tokens (combined)</td><td>{d["tokens"]["output"]/1e6:.1f}M</td></tr>')
+        hi.append(
+            f"        <tr><td>Today so far &mdash; {dates[-1][5:]}</td>"
+            f"<td>{usd(daily_total[-1])}</td></tr>"
+        )
+    hi.append(
+        f"        <tr><td>Cache reads (combined)</td><td>{d['tokens']['cacheRead'] / 1e9:.1f}B tokens</td></tr>"
+    )
+    hi.append(
+        f"        <tr><td>Output tokens (combined)</td><td>{d['tokens']['output'] / 1e6:.1f}M</td></tr>"
+    )
     highlight_rows = "\n".join(hi)
 
     top_model = ordered[0]
-    refreshed_note = (f"Refreshed hourly &middot; last update {refreshed} &middot; "
-                      "today's bar is still filling in" if refreshed else "")
+    refreshed_note = (
+        f"Refreshed hourly &middot; last update {refreshed} &middot; "
+        "today's bar is still filling in"
+        if refreshed
+        else ""
+    )
     return TEMPLATE.format(
         title_period=period_label,
         sub_period=period_label,
         refreshed_note=refreshed_note,
-        timezone=cfg['timezone'], machine_names=machine_names,
-        grand=usd(grand), ndays=n,
-        avg=usd0(avg), peak=usd0(daily_total[peak_i] if n else 0), peak_lbl=peak_lbl,
-        claude_total=usd0(claude_total), claude_pct=round(100*claude_total/grand,1) if grand else 0,
-        codex_total=usd0(codex_total), codex_pct=round(100*codex_total/grand,1) if grand else 0,
+        timezone=cfg["timezone"],
+        machine_names=machine_names,
+        grand=usd(grand),
+        ndays=n,
+        avg=usd0(avg),
+        peak=usd0(daily_total[peak_i] if n else 0),
+        peak_lbl=peak_lbl,
+        claude_total=usd0(claude_total),
+        claude_pct=round(100 * claude_total / grand, 1) if grand else 0,
+        codex_total=usd0(codex_total),
+        codex_pct=round(100 * codex_total / grand, 1) if grand else 0,
         extra_agent_cards=extra_agent_cards,
-        total_tokens=f"{d['tokens']['total']/1e9:.2f}B", cache_pct=cache_pct,
-        model_rows=model_rows, grand_row=usd(grand),
-        machine_headers=machine_headers, machine_rows=machine_rows,
-        combined_agent_cells=combined_agent_cells, combined_total=usd(grand),
+        total_tokens=f"{d['tokens']['total'] / 1e9:.2f}B",
+        cache_pct=cache_pct,
+        model_rows=model_rows,
+        grand_row=usd(grand),
+        machine_headers=machine_headers,
+        machine_rows=machine_rows,
+        combined_agent_cells=combined_agent_cells,
+        combined_total=usd(grand),
         highlight_rows=highlight_rows,
         top_model_label=top_model[1].replace(" (Codex)", ""),
         top_model_total=usd0(d["model_totals"][top_model[0]]),
         labels_js=json.dumps(labels),
-        agent_consts=agent_consts, agent_datasets=agent_datasets,
+        agent_consts=agent_consts,
+        agent_datasets=agent_datasets,
         day_tokens_js=jsintarr(d["day_tokens"]),
         daily_total_js=jsarr(daily_total),
-        model_consts=model_consts, model_datasets=model_datasets,
-        split_labels=split_labels, split_data=split_data, split_colors=split_colors,
-        agent_split_labels=agent_split_labels, agent_split_data=agent_split_data,
+        model_consts=model_consts,
+        model_datasets=model_datasets,
+        split_labels=split_labels,
+        split_data=split_data,
+        split_colors=split_colors,
+        agent_split_labels=agent_split_labels,
+        agent_split_data=agent_split_data,
         agent_split_colors=agent_split_colors,
     )
 
 
-def build_index(cfg: dict = None):
+def build_index(cfg: dict | None = None):
     """Scan reports/ and write index.html linking every report in date order."""
     cfg = cfg or {"machines": []}
     machine_names = " and ".join(m["label"] for m in cfg["machines"])
@@ -705,9 +835,9 @@ def build_index(cfg: dict = None):
         f'      <a class="report" href="{href}">'
         f'<span class="rlabel">{label}</span>'
         f'<span class="rperiod">{period}</span></a>'
-        for _, label, href, period in entries)
-    html = INDEX_TEMPLATE.format(rows=rows, count=len(entries),
-                                 machine_names=machine_names)
+        for _, label, href, period in entries
+    )
+    html = INDEX_TEMPLATE.format(rows=rows, count=len(entries), machine_names=machine_names)
     with open(os.path.join(REPORTS, "index.html"), "w", encoding="utf-8") as f:
         f.write(html)
     return len(entries)
@@ -949,26 +1079,35 @@ INDEX_TEMPLATE = r"""<!doctype html>
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--collect", action="store_true", help="collect fresh data + render latest report")
+    ap.add_argument(
+        "--collect", action="store_true", help="collect fresh data + render latest report"
+    )
     ap.add_argument("--days", type=int, default=30, help="rolling window length (default 30)")
     ap.add_argument("--index-only", action="store_true", help="only rebuild index.html")
     ap.add_argument("--today", help="override 'today' as YYYY-MM-DD (for testing)")
     ap.add_argument("--config", help=f"path to config (default {CONFIG})")
-    ap.add_argument("--no-publish", action="store_true",
-                    help="skip the configured publishCommand")
-    ap.add_argument("--archive-month", metavar="YYYY-MM",
-                    help="freeze one settled month to dated raw files and exit")
-    ap.add_argument("--force", action="store_true",
-                    help="with --archive-month, overwrite an existing archive")
+    ap.add_argument("--no-publish", action="store_true", help="skip the configured publishCommand")
+    ap.add_argument(
+        "--archive-month",
+        metavar="YYYY-MM",
+        help="freeze one settled month to dated raw files and exit",
+    )
+    ap.add_argument(
+        "--force", action="store_true", help="with --archive-month, overwrite an existing archive"
+    )
     args = ap.parse_args()
 
     cfg = load_config(args.config)
 
+    # raw/ and reports/ hold generated data and are gitignored, so a fresh
+    # clone has neither. Create them rather than failing the first run.
+    os.makedirs(RAW, exist_ok=True)
+    os.makedirs(REPORTS, exist_ok=True)
+
     if args.archive_month:
         first, last = month_bounds(args.archive_month)
         if last >= dt.date.today():
-            raise SystemExit(
-                f"{args.archive_month} is not over yet — archives must be settled.")
+            raise SystemExit(f"{args.archive_month} is not over yet — archives must be settled.")
         written = archive_window(cfg, first, last, force=args.force)
         if written:
             for path in written:
@@ -1014,12 +1153,16 @@ def main():
         calculated = d["machine_total"][mach]["total"]
         if abs(reported - calculated) >= 0.005:
             raise RuntimeError(
-                f"{mach} breakdown mismatch: reported={reported:.6f} calculated={calculated:.6f}")
+                f"{mach} breakdown mismatch: reported={reported:.6f} calculated={calculated:.6f}"
+            )
     msum = sum(d["machine_total"][m]["total"] for m in d["machine_total"])
     if abs(msum - d["grand"]) >= 0.005:
-        raise RuntimeError(f"combined breakdown mismatch: grand={d['grand']:.6f} machines={msum:.6f}")
+        raise RuntimeError(
+            f"combined breakdown mismatch: grand={d['grand']:.6f} machines={msum:.6f}"
+        )
 
-    sm = f"{since.strftime('%b %-d')} – {until.strftime('%b %-d, %Y')}"
+    # The en dash below is intentional typography in the rendered title.
+    sm = f"{since.strftime('%b %-d')} – {until.strftime('%b %-d, %Y')}"  # noqa: RUF001
     label = f"{sm} (rolling {args.days}d)"
     refreshed = dt.datetime.now().strftime("%b %-d, %-I:%M %p %Z").strip()
     html = render_report(d, label, refreshed, cfg)
@@ -1043,7 +1186,8 @@ def main():
             # buries the publish script's own error message.
             raise SystemExit(
                 f"publishCommand failed (exit {rc}): {publish}\n"
-                f"The report was still written to {out}.")
+                f"The report was still written to {out}."
+            )
 
 
 if __name__ == "__main__":
