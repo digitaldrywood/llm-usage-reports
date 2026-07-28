@@ -17,14 +17,21 @@ Note this file is force-added (`git add -f`) because `CLAUDE.md` is in the user'
 global gitignore — `git add -A` will not pick up changes to it. Commit it
 explicitly.
 
-**This working copy lives inside a synced Dropbox folder.** `.git/` is marked
-with the extended attribute `user.com-dropbox-ignored=1` so the sync client
-leaves it alone — a file-syncer racing git on `index`, `refs/`, and loose objects
-is a well-known way to corrupt a repo, and this folder is replicated to a second
-machine. If the repo is ever moved or re-cloned in place, re-apply it:
-`python3 -c "import os; os.setxattr('.git', 'user.com-dropbox-ignored', b'1')"`
-(`setfattr`/`attr` are not installed here). Verify with `os.getxattr`. The
-tracked files still sync normally; only `.git/` is excluded.
+**If this working copy sits inside a file-sync folder** (Dropbox, iCloud Drive,
+OneDrive, Google Drive), exclude `.git/` from the sync. A syncer racing git on
+`index`, `refs/`, and loose objects is a well-known way to corrupt a repo, and
+it's worse when the same folder is replicated to a second machine that also runs
+git. Tracked files keep syncing normally; only `.git/` is excluded.
+
+For Dropbox on Linux, set the extended attribute (note `setfattr`/`attr` may not
+be installed — Python works without them):
+
+```bash
+python3 -c "import os; os.setxattr('.git', 'user.com-dropbox-ignored', b'1')"
+python3 -c "import os; print(os.getxattr('.git', 'user.com-dropbox-ignored'))"
+```
+
+It is not stored in git, so re-apply it after moving or re-cloning in place.
 
 `scripts/refresh.sh` runs **hourly** via cron (`0 * * * *`). A full run takes ~12s
 and makes no LLM calls (it only reads local agent logs), so the cadence is
