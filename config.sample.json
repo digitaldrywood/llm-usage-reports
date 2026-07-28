@@ -26,6 +26,17 @@
     }
   ],
 
+  "_archiveMonthly": [
+    "Default true. The rolling window is rebuilt from local agent logs every",
+    "run, so it is only ever as deep as those logs — and agents prune old",
+    "sessions on their own retention timers, at different depths per agent.",
+    "With this on, the first run of each month freezes the previous month to",
+    "raw/ccusage-<id>-<first>_<last>.json, written once and never overwritten,",
+    "so your history survives the pruning. Backfill older months while their",
+    "logs still exist:  python3 scripts/generate_report.py --archive-month 2026-06"
+  ],
+  "archiveMonthly": true,
+
   "_publishCommand": [
     "Optional. This project only generates HTML into reports/ — publishing it",
     "anywhere is your business, not the repo's. Leave null to just write files.",

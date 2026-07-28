@@ -147,6 +147,40 @@ class GenerateReportTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "--by-agent"):
             report.normalize_codex_standard(json.dumps(unified), json.dumps(codex))
 
+    def test_archive_window_bounds(self):
+        import datetime as dt
+        # previous_month must handle the Jan rollover and short months.
+        self.assertEqual(report.previous_month(dt.date(2026, 1, 15)),
+                         (dt.date(2025, 12, 1), dt.date(2025, 12, 31)))
+        self.assertEqual(report.previous_month(dt.date(2026, 3, 1)),
+                         (dt.date(2026, 2, 1), dt.date(2026, 2, 28)))
+        self.assertEqual(report.month_bounds("2026-02"),
+                         (dt.date(2026, 2, 1), dt.date(2026, 2, 28)))
+        self.assertEqual(report.month_bounds("2024-02")[1], dt.date(2024, 2, 29))
+        self.assertEqual(report.month_bounds("2026-12"),
+                         (dt.date(2026, 12, 1), dt.date(2026, 12, 31)))
+        with self.assertRaises(SystemExit):
+            report.month_bounds("2026-13")
+
+    def test_archive_is_skipped_when_already_frozen(self):
+        """Archives are written once and never overwritten — they're the
+        durable record that outlives agent log pruning."""
+        original = report.RAW
+        with tempfile.TemporaryDirectory() as tmp:
+            report.RAW = tmp
+            try:
+                cfg = {"timezone": "UTC", "machines": [{"id": "m1"}]}
+                path = report.archive_path("m1", "2026-06-01", "2026-06-30")
+                Path(path).write_text('{"already": true}', encoding="utf-8")
+                # collect_machine would raise if called — proving the skip.
+                written = report.archive_window(
+                    cfg, __import__("datetime").date(2026, 6, 1),
+                    __import__("datetime").date(2026, 6, 30))
+                self.assertEqual(written, [])
+                self.assertEqual(Path(path).read_text(), '{"already": true}')
+            finally:
+                report.RAW = original
+
     def _write_config(self, tmp, cfg):
         path = Path(tmp) / "config.json"
         path.write_text(json.dumps(cfg), encoding="utf-8")

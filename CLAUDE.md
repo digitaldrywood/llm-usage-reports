@@ -17,6 +17,15 @@ Note this file is force-added (`git add -f`) because `CLAUDE.md` is in the user'
 global gitignore — `git add -A` will not pick up changes to it. Commit it
 explicitly.
 
+**This working copy lives inside a synced Dropbox folder.** `.git/` is marked
+with the extended attribute `user.com-dropbox-ignored=1` so the sync client
+leaves it alone — a file-syncer racing git on `index`, `refs/`, and loose objects
+is a well-known way to corrupt a repo, and this folder is replicated to a second
+machine. If the repo is ever moved or re-cloned in place, re-apply it:
+`python3 -c "import os; os.setxattr('.git', 'user.com-dropbox-ignored', b'1')"`
+(`setfattr`/`attr` are not installed here). Verify with `os.getxattr`. The
+tracked files still sync normally; only `.git/` is excluded.
+
 `scripts/refresh.sh` runs **hourly** via cron (`0 * * * *`). A full run takes ~12s
 and makes no LLM calls (it only reads local agent logs), so the cadence is
 effectively free. The script self-locks with `flock -n -E 99` so a wedged SSH to a
@@ -182,8 +191,17 @@ session.
   than Claude Code history on the same box. A 30-day rolling window fits
   comfortably, but a longer
   retrospective would silently undercount Claude while Codex looked complete.
-  `cleanupPeriodDays` is unset (default 30) on both machines. Freeze a dated
-  `raw/` snapshot before relying on any window longer than ~30 days.
+  `cleanupPeriodDays` is unset (default 30) on both machines, so raising it is
+  one lever. The durable answer is the monthly archive: with
+  `archiveMonthly: true` (default) the first run of each month freezes the
+  previous month to `raw/ccusage-<id>-<first>_<last>.json`, written once and
+  never overwritten. Backfill older months while their logs still exist:
+  `python3 scripts/generate_report.py --archive-month 2026-06` (add `--force`
+  to redo one). Archives are collected with no `live_date`, so they reconcile
+  strictly — the month must be over, and the command refuses an unfinished one.
+  Note the two original hand-made windows (`…05-11_2026-06-09`,
+  `…06-10_2026-06-15`) overlap the calendar-month archives, so never sum every
+  dated file and call it a lifetime total.
 - Re-collecting the same window can move the total slightly (~0.01% observed)
   because ccusage re-reads live session files that agents may still rewrite.
   Don't treat a past rolling total as immutable; the dated milestone reports in

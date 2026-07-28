@@ -40,6 +40,11 @@ pricing. The parts that took real work:
   something new to show, but today is still being written — so it's excluded
   from averages, day rankings, and the strict reconciliation, and labelled as
   partial in the UI.
+- **History outlives log pruning.** The rolling window is rebuilt from local
+  agent logs every run, so it is only ever as deep as those logs — and agents
+  prune old sessions on their own timers, at different depths per agent. The
+  first run of each month freezes the previous month to a dated file that is
+  written once and never overwritten.
 - **Fails loudly.** Reconciliation mismatches abort the run. Unknown models and
   hosted models priced at $0 print warnings instead of silently undercounting.
 
@@ -97,6 +102,20 @@ The run takes ~12s and makes no LLM calls, so it's cheap to run often. Hourly:
 ```
 
 `refresh.sh` self-locks with `flock`, so a wedged SSH can't let runs pile up.
+
+### Preserving history
+
+Agents prune their own logs, so a window longer than your shortest retention
+silently thins out at the far end. With `archiveMonthly` on (the default), each
+month is frozen once it's over. To backfill months whose logs still exist:
+
+```bash
+python3 scripts/generate_report.py --archive-month 2026-06
+```
+
+Archives are collected as fully-settled windows, so the month must be over —
+the command refuses one that isn't. They're written once and never overwritten
+(`--force` to redo one).
 
 ## Adding a new model
 

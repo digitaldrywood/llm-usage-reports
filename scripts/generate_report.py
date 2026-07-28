@@ -73,6 +73,27 @@ def load_config(path: str = None) -> dict:
 def raw_path(machine_id: str) -> str:
     return os.path.join(RAW, f"ccusage-{machine_id}-rolling.json")
 
+
+def archive_path(machine_id: str, since: str, until: str) -> str:
+    """Path for a frozen, fully-settled window (never overwritten)."""
+    return os.path.join(RAW, f"ccusage-{machine_id}-{since}_{until}.json")
+
+
+def previous_month(today: dt.date):
+    """(first, last) dates of the calendar month before `today`."""
+    last = today.replace(day=1) - dt.timedelta(days=1)
+    return last.replace(day=1), last
+
+
+def month_bounds(year_month: str):
+    """(first, last) dates of a 'YYYY-MM' string."""
+    try:
+        first = dt.date.fromisoformat(year_month + "-01")
+    except ValueError:
+        raise SystemExit(f"--archive-month expects YYYY-MM, got {year_month!r}")
+    nxt = (first.replace(day=28) + dt.timedelta(days=4)).replace(day=1)
+    return first, nxt - dt.timedelta(days=1)
+
 MODEL_GROUPS = [
     ("fable5", "Fable 5", "#e3b341"),
     ("gpt55", "GPT-5.5 (Codex)", "#4f8cc9"),
@@ -359,6 +380,39 @@ def collect_machine(machine: dict, since: str, until: str, tz: str,
     finally:
         subprocess.run(["ssh", "-o", "ConnectTimeout=20", ssh_target,
                         f"rm -f {remote_config}"], capture_output=True, text=True)
+
+
+def archive_window(cfg: dict, since: dt.date, until: dt.date, force=False) -> list:
+    """Freeze a settled date range to dated raw files, one per machine.
+
+    The rolling window is regenerated from local agent logs every run, so it is
+    only ever as deep as those logs. Claude Code prunes transcripts on a
+    retention timer (and history depth differs sharply per agent), which means
+    the far end of any long window silently thins out over time. These frozen
+    snapshots are the durable record: written once, never overwritten, and
+    unaffected by later pruning.
+
+    Returns the paths written (empty if every machine was already archived).
+    """
+    since_s, until_s = since.isoformat(), until.isoformat()
+    wanted = {m["id"]: archive_path(m["id"], since_s, until_s) for m in cfg["machines"]}
+    if not force and all(os.path.exists(p) for p in wanted.values()):
+        return []
+
+    written = []
+    for m in cfg["machines"]:
+        path = wanted[m["id"]]
+        if os.path.exists(path) and not force:
+            continue
+        # No live_date: the window is fully settled, so reconcile strictly.
+        content = collect_machine(m, since_s, until_s, cfg["timezone"])
+        json.loads(content)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, path)
+        written.append(path)
+    return written
 
 
 def collect(cfg: dict, since: str, until: str, live_date: str = None) -> dict:
@@ -902,9 +956,26 @@ def main():
     ap.add_argument("--config", help=f"path to config (default {CONFIG})")
     ap.add_argument("--no-publish", action="store_true",
                     help="skip the configured publishCommand")
+    ap.add_argument("--archive-month", metavar="YYYY-MM",
+                    help="freeze one settled month to dated raw files and exit")
+    ap.add_argument("--force", action="store_true",
+                    help="with --archive-month, overwrite an existing archive")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+
+    if args.archive_month:
+        first, last = month_bounds(args.archive_month)
+        if last >= dt.date.today():
+            raise SystemExit(
+                f"{args.archive_month} is not over yet — archives must be settled.")
+        written = archive_window(cfg, first, last, force=args.force)
+        if written:
+            for path in written:
+                print(f"archived {os.path.basename(path)}")
+        else:
+            print(f"{args.archive_month} already archived (use --force to redo)")
+        return
 
     if args.index_only:
         n = build_index(cfg)
@@ -928,6 +999,11 @@ def main():
         names = ", ".join(m["label"] for m in cfg["machines"])
         print(f"Collecting {since_s} .. {until_s} from {names}...")
         files = collect(cfg, since_s, until_s, live_date=until_s)
+        # Freeze last month once it's settled, so history outlives log pruning.
+        if cfg.get("archiveMonthly", True):
+            first, last = previous_month(today)
+            for path in archive_window(cfg, first, last):
+                print(f"archived {os.path.basename(path)}")
     else:
         files = {mid: raw_path(mid) for mid in machine_ids}
 
