@@ -1,0 +1,38 @@
+{
+  "_comment": "Copy to config.json and edit. config.json is gitignored — keep hostnames, usernames and anything else identifying out of version control.",
+
+  "timezone": "America/Chicago",
+
+  "_machines": [
+    "One entry per machine you want counted. ccusage only ever sees the logs on",
+    "the machine it runs on, so each machine must be collected separately.",
+    "Exactly one entry omits 'ssh' — that's the machine you run this script on.",
+    "Every other entry is driven over SSH and needs working key-based auth.",
+    "'id' is used for the raw filename (raw/ccusage-<id>-rolling.json), so",
+    "changing it starts a fresh snapshot. 'label' is what the report displays.",
+    "'remoteShell' wraps the remote command so login-shell PATH is applied —",
+    "needed when node/npx come from Homebrew or a version manager."
+  ],
+  "machines": [
+    {
+      "id": "workstation",
+      "label": "Workstation (Linux)"
+    },
+    {
+      "id": "laptop",
+      "label": "Laptop (macOS)",
+      "ssh": "you@your-host-or-tailscale-ip",
+      "remoteShell": "zsh -lc"
+    }
+  ],
+
+  "_publishCommand": [
+    "Optional. This project only generates HTML into reports/ — publishing it",
+    "anywhere is your business, not the repo's. Leave null to just write files.",
+    "If set, it runs from the project root after a successful render; a non-zero",
+    "exit fails the run. Point it at your own script (e.g. rsync, S3, Netlify,",
+    "scp, git push to a Pages branch). Keep that script out of the repo:",
+    "*.local.sh is gitignored."
+  ],
+  "publishCommand": null
+}

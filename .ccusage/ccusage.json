@@ -1,0 +1,25 @@
+{
+  "$schema": "https://ccusage.com/config-schema.json",
+  "codex": {
+    "defaults": {
+      "speed": "standard"
+    }
+  },
+  "defaults": {
+    "offline": true,
+    "pricingOverrides": {
+      "claude-opus-5": {
+        "inputCostPerToken": 0.000005,
+        "outputCostPerToken": 0.000025,
+        "cacheCreationInputTokenCost": 0.00000625,
+        "cacheReadInputTokenCost": 0.0000005
+      },
+      "claude-sonnet-5": {
+        "inputCostPerToken": 0.000002,
+        "outputCostPerToken": 0.00001,
+        "cacheCreationInputTokenCost": 0.0000025,
+        "cacheReadInputTokenCost": 0.0000002
+      }
+    }
+  }
+}

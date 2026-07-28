@@ -1,0 +1,24 @@
+# NOTE: git does not support trailing comments on a pattern line —
+# "config.json  # secret" is parsed as a literal filename and silently
+# matches nothing. Keep every comment on its own line.
+
+# --- secrets & anything identifying -------------------------------------
+# deploy tokens / API keys
+.envrc
+# hostnames, SSH targets, publish command
+config.json
+# machine-specific scripts (e.g. your publish step)
+*.local.sh
+
+# --- generated data & output --------------------------------------------
+# collected ccusage JSON (your actual spend history)
+raw/
+# generated HTML
+reports/
+logs/
+
+# --- runtime ------------------------------------------------------------
+.ccusage/.report.lock
+.ccusage/codex-fast-incidents.json
+__pycache__/
+*.pyc
