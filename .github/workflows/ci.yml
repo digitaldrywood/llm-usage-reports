@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Ruff (lint)
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: check --output-format=github
+
+      - name: Ruff (format check)
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: format --check --diff
+
+      - name: ShellCheck
+        run: shellcheck scripts/*.sh
+
+      # Also a pre-commit hook, but that one can be skipped with --no-verify.
+      # This repo is public and its driving config is not; a leak survives a
+      # push, so the check runs where it cannot be bypassed.
+      - name: No identifying info in tracked files
+        run: ./scripts/check-no-identifying-info.sh
+
+  test:
+    name: Test (python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Lower bound is the version the README promises; upper bound catches
+        # deprecations before they land in a distro default.
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Unit tests
+        run: python -m unittest discover -s scripts -p 'test_*.py' -v
+
+  smoke:
+    name: Smoke (fresh clone)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # A clone with no config must explain itself rather than traceback —
+      # this is the first thing anyone trying the project will hit.
+      - name: Missing config is a clear message, not a stack trace
+        run: |
+          out="$(python3 scripts/generate_report.py --index-only 2>&1 || true)"
+          echo "$out"
+          echo "$out" | grep -q 'cp config.sample.json config.json'
+          echo "$out" | grep -qv 'Traceback'
+
+      - name: Sample config is usable as-is
+        run: |
+          cp config.sample.json config.json
+          python3 scripts/generate_report.py --index-only
+
+      # Archives must refuse a window that is still being written, or they
+      # would freeze a half-recorded month as if it were settled.
+      - name: Archive refuses an unsettled month
+        run: |
+          cp config.sample.json config.json
+          this_month="$(date -u +%Y-%m)"
+          out="$(python3 scripts/generate_report.py --archive-month "$this_month" 2>&1 || true)"
+          echo "$out"
+          echo "$out" | grep -q 'not over yet'

@@ -117,6 +117,23 @@ Archives are collected as fully-settled windows, so the month must be over —
 the command refuses one that isn't. They're written once and never overwritten
 (`--force` to redo one).
 
+## Development
+
+```bash
+pip install pre-commit
+pre-commit install          # run linters + tests before each commit
+pre-commit run --all-files  # or run them over the whole tree now
+```
+
+Hooks: ruff (lint + format), shellcheck, the unit tests, and a guard that
+refuses to commit anything looking like an SSH target, private IP, email
+address, or API key into a tracked file — this repo is public and the config
+that drives it deliberately is not.
+
+`no-commit-to-branch` blocks direct commits to `main`; work on a branch and open
+a PR. CI runs the same checks plus the test suite on Python 3.10–3.13 and a
+fresh-clone smoke test.
+
 ## Adding a new model
 
 Models are grouped for charting in `MODEL_GROUPS` + `group_of()` in

@@ -1,0 +1,45 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.md$'
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: ['--branch', 'main']
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      - id: ruff-check
+        args: ['--fix']
+      - id: ruff-format
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+
+  - repo: local
+    hooks:
+      - id: unittest
+        name: unit tests
+        entry: python3 -m unittest discover -s scripts -p 'test_*.py'
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      # This repo is public and the config that drives it is not. A hostname,
+      # SSH target, or personal email reaching a committed file is the one
+      # mistake that cannot be undone after a push.
+      - id: no-identifying-info
+        name: no identifying info in tracked files
+        entry: scripts/check-no-identifying-info.sh
+        language: system
+        pass_filenames: false

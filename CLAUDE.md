@@ -45,6 +45,26 @@ that points at `scripts/publish.local.sh` (gitignored via `*.local.sh`; it reads
 its deploy credentials from `.envrc`). Never name the destination service in a
 committed file.
 
+## Linting, tests, CI
+
+`pre-commit install` once, then every commit runs ruff (lint + format),
+shellcheck, the unit tests, and `scripts/check-no-identifying-info.sh`. CI
+(`.github/workflows/ci.yml`) runs the same checks, the tests on Python
+3.10–3.13, and a fresh-clone smoke test.
+
+- **`no-commit-to-branch` blocks direct commits to `main`** — branch and open a
+  PR. `SKIP=no-commit-to-branch git commit …` overrides it if you must.
+- Ruff config is in `pyproject.toml`. `E501` is off for `generate_report.py`:
+  that file embeds the whole HTML/CSS/JS report as a template string, and the
+  long lines there are markup, not code. **Run `ruff format` after editing** —
+  CI fails on an unformatted diff.
+- The identifying-info guard also runs in CI, where `--no-verify` can't reach
+  it. It only scans *tracked* files, so `config.json` / `.envrc` / `*.local.sh`
+  are correctly ignored — that's where machine-specific detail belongs.
+- `raw/` and `reports/` are gitignored, so a fresh clone has neither. `main()`
+  creates them; don't reintroduce a first-run `FileNotFoundError` (the CI smoke
+  job exists because that shipped once).
+
 ## Folder layout
 
 ```

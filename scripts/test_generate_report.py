@@ -40,19 +40,24 @@ class GenerateReportTests(unittest.TestCase):
     def _unified_day(period, codex_rows, claude_rows=()):
         agents = [{"agent": "codex", "modelBreakdowns": list(codex_rows)}]
         if claude_rows:
-            agents.append({"agent": "claude",
-                           "modelBreakdowns": list(claude_rows)})
+            agents.append({"agent": "claude", "modelBreakdowns": list(claude_rows)})
         return {"period": period, "totalCost": 0.0, "agents": agents}
 
     def test_fast_codex_costs_are_normalized_per_model(self):
         unified = {
-            "daily": [self._unified_day("2026-07-14", [
-                {"modelName": "gpt-5.5", "cost": 25.0},
-                {"modelName": "gpt-5.6-sol", "cost": 20.0},
-                {"modelName": "gpt-5.4-mini", "cost": 2.0},
-            ], [
-                {"modelName": "claude-fable-5", "cost": 3.0},
-            ])],
+            "daily": [
+                self._unified_day(
+                    "2026-07-14",
+                    [
+                        {"modelName": "gpt-5.5", "cost": 25.0},
+                        {"modelName": "gpt-5.6-sol", "cost": 20.0},
+                        {"modelName": "gpt-5.4-mini", "cost": 2.0},
+                    ],
+                    [
+                        {"modelName": "claude-fable-5", "cost": 3.0},
+                    ],
+                )
+            ],
             "totals": {"totalCost": 50.0},
         }
         codex = {
@@ -60,10 +65,10 @@ class GenerateReportTests(unittest.TestCase):
             "totals": {"costUSD": 21.0},
         }
 
-        normalized = json.loads(report.normalize_codex_standard(
-            json.dumps(unified), json.dumps(codex)))
-        costs = {row["modelName"]: row["cost"]
-                 for row in normalized["daily"][0]["modelBreakdowns"]}
+        normalized = json.loads(
+            report.normalize_codex_standard(json.dumps(unified), json.dumps(codex))
+        )
+        costs = {row["modelName"]: row["cost"] for row in normalized["daily"][0]["modelBreakdowns"]}
         self.assertEqual(costs["gpt-5.5"], 10.0)
         self.assertEqual(costs["gpt-5.6-sol"], 10.0)
         self.assertEqual(costs["gpt-5.4-mini"], 1.0)
@@ -78,12 +83,18 @@ class GenerateReportTests(unittest.TestCase):
         trigger Fast-mode detection or be rescaled.
         """
         unified = {
-            "daily": [self._unified_day("2026-07-22", [
-                {"modelName": "gpt-5.6-sol", "cost": 14.0},
-            ], [
-                {"modelName": "gpt-5.6-sol", "cost": 14.3},
-                {"modelName": "claude-fable-5", "cost": 33.9},
-            ])],
+            "daily": [
+                self._unified_day(
+                    "2026-07-22",
+                    [
+                        {"modelName": "gpt-5.6-sol", "cost": 14.0},
+                    ],
+                    [
+                        {"modelName": "gpt-5.6-sol", "cost": 14.3},
+                        {"modelName": "claude-fable-5", "cost": 33.9},
+                    ],
+                )
+            ],
             "totals": {"totalCost": 62.2},
         }
         codex = {
@@ -91,14 +102,14 @@ class GenerateReportTests(unittest.TestCase):
             "totals": {"costUSD": 14.0},
         }
 
-        normalized = json.loads(report.normalize_codex_standard(
-            json.dumps(unified), json.dumps(codex)))
+        normalized = json.loads(
+            report.normalize_codex_standard(json.dumps(unified), json.dumps(codex))
+        )
         meta = normalized["_llmUsageReport"]
         self.assertFalse(meta["codexFastPricingDetected"])
         self.assertAlmostEqual(meta["delegatedGptCost"], 14.3)
         # Both GPT sources merge into one charted row at full, unscaled cost.
-        costs = {row["modelName"]: row["cost"]
-                 for row in normalized["daily"][0]["modelBreakdowns"]}
+        costs = {row["modelName"]: row["cost"] for row in normalized["daily"][0]["modelBreakdowns"]}
         self.assertAlmostEqual(costs["gpt-5.6-sol"], 28.3)
         self.assertAlmostEqual(normalized["totals"]["totalCost"], 62.2)
 
@@ -111,22 +122,25 @@ class GenerateReportTests(unittest.TestCase):
         """
         unified = {
             "daily": [
-                self._unified_day("2026-07-27", [
-                    {"modelName": "gpt-5.6-sol", "cost": 100.0}]),
+                self._unified_day("2026-07-27", [{"modelName": "gpt-5.6-sol", "cost": 100.0}]),
                 # Unified saw $40 for today; the later Codex pass saw $55.
-                self._unified_day("2026-07-28", [
-                    {"modelName": "gpt-5.6-sol", "cost": 40.0}]),
+                self._unified_day("2026-07-28", [{"modelName": "gpt-5.6-sol", "cost": 40.0}]),
             ],
             "totals": {"totalCost": 140.0},
         }
         codex = {
-            "daily": [{"date": "2026-07-27", "costUSD": 100.0},
-                      {"date": "2026-07-28", "costUSD": 55.0}],
+            "daily": [
+                {"date": "2026-07-27", "costUSD": 100.0},
+                {"date": "2026-07-28", "costUSD": 55.0},
+            ],
             "totals": {"costUSD": 155.0},
         }
 
-        normalized = json.loads(report.normalize_codex_standard(
-            json.dumps(unified), json.dumps(codex), live_date="2026-07-28"))
+        normalized = json.loads(
+            report.normalize_codex_standard(
+                json.dumps(unified), json.dumps(codex), live_date="2026-07-28"
+            )
+        )
         # No false Fast detection, and today's $40 is left untouched.
         self.assertFalse(normalized["_llmUsageReport"]["codexFastPricingDetected"])
         today = normalized["daily"][1]["modelBreakdowns"][0]
@@ -138,27 +152,37 @@ class GenerateReportTests(unittest.TestCase):
 
     def test_unified_payload_without_by_agent_fails_loudly(self):
         unified = {
-            "daily": [{"period": "2026-07-14", "totalCost": 5.0,
-                       "modelBreakdowns": [{"modelName": "gpt-5.6-sol", "cost": 5.0}]}],
+            "daily": [
+                {
+                    "period": "2026-07-14",
+                    "totalCost": 5.0,
+                    "modelBreakdowns": [{"modelName": "gpt-5.6-sol", "cost": 5.0}],
+                }
+            ],
             "totals": {"totalCost": 5.0},
         }
-        codex = {"daily": [{"date": "2026-07-14", "costUSD": 5.0}],
-                 "totals": {"costUSD": 5.0}}
+        codex = {"daily": [{"date": "2026-07-14", "costUSD": 5.0}], "totals": {"costUSD": 5.0}}
         with self.assertRaisesRegex(RuntimeError, "--by-agent"):
             report.normalize_codex_standard(json.dumps(unified), json.dumps(codex))
 
     def test_archive_window_bounds(self):
         import datetime as dt
+
         # previous_month must handle the Jan rollover and short months.
-        self.assertEqual(report.previous_month(dt.date(2026, 1, 15)),
-                         (dt.date(2025, 12, 1), dt.date(2025, 12, 31)))
-        self.assertEqual(report.previous_month(dt.date(2026, 3, 1)),
-                         (dt.date(2026, 2, 1), dt.date(2026, 2, 28)))
-        self.assertEqual(report.month_bounds("2026-02"),
-                         (dt.date(2026, 2, 1), dt.date(2026, 2, 28)))
+        self.assertEqual(
+            report.previous_month(dt.date(2026, 1, 15)),
+            (dt.date(2025, 12, 1), dt.date(2025, 12, 31)),
+        )
+        self.assertEqual(
+            report.previous_month(dt.date(2026, 3, 1)), (dt.date(2026, 2, 1), dt.date(2026, 2, 28))
+        )
+        self.assertEqual(
+            report.month_bounds("2026-02"), (dt.date(2026, 2, 1), dt.date(2026, 2, 28))
+        )
         self.assertEqual(report.month_bounds("2024-02")[1], dt.date(2024, 2, 29))
-        self.assertEqual(report.month_bounds("2026-12"),
-                         (dt.date(2026, 12, 1), dt.date(2026, 12, 31)))
+        self.assertEqual(
+            report.month_bounds("2026-12"), (dt.date(2026, 12, 1), dt.date(2026, 12, 31))
+        )
         with self.assertRaises(SystemExit):
             report.month_bounds("2026-13")
 
@@ -174,8 +198,10 @@ class GenerateReportTests(unittest.TestCase):
                 Path(path).write_text('{"already": true}', encoding="utf-8")
                 # collect_machine would raise if called — proving the skip.
                 written = report.archive_window(
-                    cfg, __import__("datetime").date(2026, 6, 1),
-                    __import__("datetime").date(2026, 6, 30))
+                    cfg,
+                    __import__("datetime").date(2026, 6, 1),
+                    __import__("datetime").date(2026, 6, 30),
+                )
                 self.assertEqual(written, [])
                 self.assertEqual(Path(path).read_text(), '{"already": true}')
             finally:
@@ -188,8 +214,11 @@ class GenerateReportTests(unittest.TestCase):
 
     def test_config_defaults_and_validation(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cfg = report.load_config(self._write_config(tmp, {
-                "machines": [{"id": "here"}, {"id": "there", "ssh": "u@h"}]}))
+            cfg = report.load_config(
+                self._write_config(
+                    tmp, {"machines": [{"id": "here"}, {"id": "there", "ssh": "u@h"}]}
+                )
+            )
             self.assertEqual(cfg["timezone"], "America/Chicago")
             self.assertIsNone(cfg["publishCommand"])
             # label falls back to id; remoteShell has a login-shell default
@@ -197,9 +226,11 @@ class GenerateReportTests(unittest.TestCase):
             self.assertEqual(cfg["machines"][1]["remoteShell"], "zsh -lc")
 
             # Exactly one machine may omit ssh — it's the one running the script.
-            for machines in ([{"id": "a"}, {"id": "b"}],          # two local
-                             [{"id": "a", "ssh": "u@h"}],          # none local
-                             [{"id": "a"}, {"id": "a", "ssh": "x"}]):  # dup id
+            for machines in (
+                [{"id": "a"}, {"id": "b"}],  # two local
+                [{"id": "a", "ssh": "u@h"}],  # none local
+                [{"id": "a"}, {"id": "a", "ssh": "x"}],
+            ):  # dup id
                 with self.assertRaises(SystemExit):
                     report.load_config(self._write_config(tmp, {"machines": machines}))
 
@@ -216,8 +247,7 @@ class GenerateReportTests(unittest.TestCase):
         """The committed template must actually load, or first-run setup breaks."""
         cfg = report.load_config(report.CONFIG_SAMPLE)
         self.assertGreaterEqual(len(cfg["machines"]), 1)
-        self.assertIsNone(cfg["publishCommand"],
-                          "sample must not publish anywhere by default")
+        self.assertIsNone(cfg["publishCommand"], "sample must not publish anywhere by default")
         # No real host should ever land in the committed sample.
         self.assertNotIn("@100.", json.dumps(cfg))
 
@@ -228,10 +258,16 @@ class GenerateReportTests(unittest.TestCase):
             try:
                 report.update_fast_incidents(
                     {"machine-a": False, "machine-b": True},
-                    "2026-06-15", "2026-07-14", "2026-07-15")
+                    "2026-06-15",
+                    "2026-07-14",
+                    "2026-07-15",
+                )
                 report.update_fast_incidents(
                     {"machine-a": False, "machine-b": False},
-                    "2026-06-16", "2026-07-15", "2026-07-16")
+                    "2026-06-16",
+                    "2026-07-15",
+                    "2026-07-16",
+                )
                 history = json.loads(Path(report.FAST_INCIDENTS).read_text())
             finally:
                 report.FAST_INCIDENTS = original
@@ -245,16 +281,31 @@ class GenerateReportTests(unittest.TestCase):
 
     def test_unpriced_warning_ignores_free_local_models(self):
         """A hosted model at $0 is a missing price; a local one is just free."""
-        payload = {"daily": [{
-            "period": "2026-07-14", "cacheReadTokens": 0, "outputTokens": 0,
-            "totalTokens": 0,
-            "modelBreakdowns": [
-                {"modelName": "gemini-3.5-flash", "cost": 0.0,
-                 "inputTokens": 5000, "outputTokens": 10},
-                {"modelName": "llama3.2:3b", "cost": 0.0,
-                 "inputTokens": 5000, "outputTokens": 10},
+        payload = {
+            "daily": [
+                {
+                    "period": "2026-07-14",
+                    "cacheReadTokens": 0,
+                    "outputTokens": 0,
+                    "totalTokens": 0,
+                    "modelBreakdowns": [
+                        {
+                            "modelName": "gemini-3.5-flash",
+                            "cost": 0.0,
+                            "inputTokens": 5000,
+                            "outputTokens": 10,
+                        },
+                        {
+                            "modelName": "llama3.2:3b",
+                            "cost": 0.0,
+                            "inputTokens": 5000,
+                            "outputTokens": 10,
+                        },
+                    ],
+                }
             ],
-        }], "totals": {"totalCost": 0.0}}
+            "totals": {"totalCost": 0.0},
+        }
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "only.json"
             path.write_text(json.dumps(payload), encoding="utf-8")
@@ -268,26 +319,28 @@ class GenerateReportTests(unittest.TestCase):
 
     def test_load_preserves_precision_and_separates_gemini(self):
         payload = {
-            "daily": [{
-                "period": "2026-07-14",
-                "cacheReadTokens": 0,
-                "outputTokens": 0,
-                "totalTokens": 0,
-                "modelBreakdowns": [
-                    {"modelName": "claude-fable-5", "cost": 0.004},
-                    {"modelName": "gemini-3.1-pro-preview", "cost": 0.004},
-                ],
-            }],
+            "daily": [
+                {
+                    "period": "2026-07-14",
+                    "cacheReadTokens": 0,
+                    "outputTokens": 0,
+                    "totalTokens": 0,
+                    "modelBreakdowns": [
+                        {"modelName": "claude-fable-5", "cost": 0.004},
+                        {"modelName": "gemini-3.1-pro-preview", "cost": 0.004},
+                    ],
+                }
+            ],
             "totals": {"totalCost": 0.008},
         }
         with tempfile.TemporaryDirectory() as tmp:
             first = Path(tmp) / "first.json"
             second = Path(tmp) / "second.json"
             first.write_text(json.dumps(payload), encoding="utf-8")
-            second.write_text(json.dumps({"daily": [], "totals": {"totalCost": 0}}),
-                              encoding="utf-8")
-            data = report.load({"machine-a": first, "machine-b": second},
-                               ["2026-07-14"])
+            second.write_text(
+                json.dumps({"daily": [], "totals": {"totalCost": 0}}), encoding="utf-8"
+            )
+            data = report.load({"machine-a": first, "machine-b": second}, ["2026-07-14"])
 
         self.assertAlmostEqual(data["grand"], 0.008)
         self.assertAlmostEqual(data["agents"]["claude"][0], 0.004)
