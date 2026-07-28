@@ -8,6 +8,12 @@
   "defaults": {
     "offline": true,
     "pricingOverrides": {
+      "gemini-3.5-flash": {
+        "inputCostPerToken": 0.0000015,
+        "outputCostPerToken": 0.000009,
+        "cacheCreationInputTokenCost": 0.0000015,
+        "cacheReadInputTokenCost": 0.00000015
+      },
       "claude-opus-5": {
         "inputCostPerToken": 0.000005,
         "outputCostPerToken": 0.000025,

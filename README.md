@@ -12,7 +12,9 @@ No API keys, no telemetry, no account linking. Everything is computed from logs
 already on disk by [ccusage](https://github.com/ryoppippi/ccusage). This project
 is the multi-machine collection, normalization, and reporting layer on top.
 
-<!-- Screenshot: reports/llm-usage-latest.html rendered in a browser. -->
+![The generated dashboard](docs/screenshot.png)
+
+*Sample data — not real spend.*
 
 ## Why it isn't just `ccusage daily`
 
@@ -117,9 +119,12 @@ raw/                         collected ccusage JSON, per machine   (gitignored)
 reports/                     generated HTML                        (gitignored)
 ```
 
-The reconciliation logic in `generate_report.py` is heavily commented — each
-guard says which real failure put it there, because most of them are not
-obvious and removing one tends to reintroduce a silent undercount.
+`CLAUDE.md` is the working-notes file — every gotcha this pipeline has hit, and
+why each guard exists. It's written for an AI coding agent working on the repo,
+but it's the most detailed account of how the thing actually behaves. The
+reconciliation logic in `generate_report.py` is commented in the same spirit:
+each guard names the real failure that put it there, because most of them are
+not obvious and removing one tends to reintroduce a silent undercount.
 
 ## Caveats
 
