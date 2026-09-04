@@ -8,6 +8,13 @@
   "defaults": {
     "offline": true,
     "pricingOverrides": {
+      "gpt-6-astra": {
+        "inputCostPerToken": 0.00001,
+        "outputCostPerToken": 0.00005,
+        "cacheCreationInputTokenCost": 0.0000125,
+        "cacheReadInputTokenCost": 0.000001,
+        "fastMultiplier": 2.0
+      },
       "gemini-3.5-flash": {
         "inputCostPerToken": 0.0000015,
         "outputCostPerToken": 0.000009,

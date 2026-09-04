@@ -143,6 +143,15 @@ offline snapshot doesn't know its price yet, add a `pricingOverrides` entry to
 `.ccusage/ccusage.json` (the run warns about that too, for hosted models
 reporting tokens at $0 — local Ollama models are exempt, since free is correct).
 
+GPT-6 Astra has its own chart group and a pinned standard pricing override,
+verified September 4, 2026 against [OpenAI's pricing](https://developers.openai.com/api/docs/pricing):
+$10 input, $1 cache read, $12.50 cache write, and $50 output per million tokens.
+The override travels to every machine during collection. Fast-mode normalization
+uses the existing 2x multiplier; the report continues to show standard estimates.
+The pinned collector's override schema only offers a 200K long-context threshold,
+so this override uses short-context rates. Astra requests above 272K input tokens
+cost more and may be underestimated; see [Astra's pricing notes](https://developers.openai.com/api/docs/models/gpt-6-astra).
+
 ## Layout
 
 ```

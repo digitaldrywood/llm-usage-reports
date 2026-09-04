@@ -43,6 +43,33 @@ class GenerateReportTests(unittest.TestCase):
             agents.append({"agent": "claude", "modelBreakdowns": list(claude_rows)})
         return {"period": period, "totalCost": 0.0, "agents": agents}
 
+    def test_astra_normalization_and_report_totals(self):
+        """Both GPT sources reach Astra's chart without scaling delegated spend."""
+        day = self._unified_day(
+            "2026-09-04",
+            [{"modelName": "gpt-6-astra", "cost": 20.0}],
+            [{"modelName": "gpt-6-astra", "cost": 3.0}],
+        )
+        day.update(cacheReadTokens=1000, outputTokens=100, totalTokens=2000)
+        unified = {"daily": [day], "totals": {"totalCost": 23.0}}
+        codex = {"daily": [{"date": "2026-09-04", "costUSD": 10.0}]}
+        normalized = report.normalize_codex_standard(json.dumps(unified), json.dumps(codex))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "usage.json"
+            path.write_text(normalized, encoding="utf-8")
+            data = report.load({"machine-a": path}, ["2026-09-04"])
+        self.assertEqual(data["model_totals"]["gpt6astra"], 13.0)
+        self.assertEqual(data["model_totals"]["gptother"], 0.0)
+        self.assertEqual(data["agents"]["codex"], [13.0])
+        self.assertEqual(data["grand"], 13.0)
+        for model in ("gpt-6-astra", "gpt-6-astra-2026-09-04", "[openclaw] gpt-6-astra"):
+            with self.subTest(model=model):
+                self.assertEqual(report.group_of(model), "gpt6astra")
+                self.assertEqual(report.agent_of(model), "codex")
+        for model in ("gpt-6-astra-pro", "gpt-6-astra-1", "gpt-6-other"):
+            with self.subTest(model=model):
+                self.assertEqual(report.group_of(model), "gptother")
+
     def test_fast_codex_costs_are_normalized_per_model(self):
         unified = {
             "daily": [

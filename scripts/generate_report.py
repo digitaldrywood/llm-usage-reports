@@ -101,6 +101,7 @@ MODEL_GROUPS = [
     ("fable5", "Fable 5", "#e3b341"),
     ("gpt55", "GPT-5.5 (Codex)", "#4f8cc9"),
     ("gpt56sol", "GPT-5.6 Sol (Codex)", "#79c0ff"),
+    ("gpt6astra", "GPT-6 Astra (Codex)", "#39c5cf"),
     ("opus5", "Opus 5", "#ffc4a3"),
     ("opus48", "Opus 4.8", "#f0a07a"),
     ("opus47", "Opus 4.7", "#d97757"),
@@ -137,6 +138,8 @@ def normalize_model(model: str) -> str:
 
 def group_of(model: str) -> str:
     model = normalize_model(model)
+    if model == "gpt-6-astra" or re.fullmatch(r"gpt-6-astra-\d{4}-\d{2}-\d{2}", model):
+        return "gpt6astra"
     if model.startswith("gpt-5.5"):
         return "gpt55"
     if model.startswith("gpt-5.6"):
@@ -954,7 +957,7 @@ TEMPLATE = r"""<!doctype html>
 
   <div class="footnote">
     Per-model allocations come from <code>ccusage --breakdown</code> on each machine; totals are summed at full precision before display rounding.
-    Top model this period: {top_model_label} ({top_model_total}). Codex spend covers all GPT models (gpt-5.5, gpt-5.6-sol, etc.) from both the Codex CLI and Codex work delegated from Claude Code.
+    Top model this period: {top_model_label} ({top_model_total}). Codex spend covers all GPT models (gpt-6-astra, gpt-5.6-sol, etc.) from both the Codex CLI and Codex work delegated from Claude Code.
     Costs are API-equivalent estimates from token counts using a pinned offline pricing snapshot &mdash; not invoices or subscription-limit percentages.
     Fable 5 rates are already 2&times; Opus 4.8; no extra multiplier is applied. ChatGPT fast-mode credit consumption is a separate plan metric and is excluded here.
     Generated from the saved per-machine raw snapshots.
