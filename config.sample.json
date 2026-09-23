@@ -11,7 +11,11 @@
     "'id' is used for the raw filename (raw/ccusage-<id>-rolling.json), so",
     "changing it starts a fresh snapshot. 'label' is what the report displays.",
     "'remoteShell' wraps the remote command so login-shell PATH is applied —",
-    "needed when node/npx come from Homebrew or a version manager."
+    "needed when node/npx come from Homebrew or a version manager.",
+    "Optional claudeConfigDirs and codexHomes list absolute profile roots",
+    "to collect. Every listed root must have projects/ or sessions/ respectively.",
+    "Use distinct roots for separate profiles; a shared Codex home cannot",
+    "identify which signed-in account created an old session."
   ],
   "machines": [
     {
@@ -36,6 +40,13 @@
     "logs still exist:  python3 scripts/generate_report.py --archive-month 2026-06"
   ],
   "archiveMonthly": true,
+
+  "_expectedAccounts": [
+    "Optional: add expectedAccounts with claude/codex counts after listing",
+    "explicit profile roots on every machine. The report then compares checked",
+    "log roots with expected accounts, while noting shared Codex sign-ins",
+    "cannot be attributed to individual accounts."
+  ],
 
   "_publishCommand": [
     "Optional. This project only generates HTML into reports/ — publishing it",

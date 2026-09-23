@@ -8,6 +8,13 @@
   "defaults": {
     "offline": true,
     "pricingOverrides": {
+      "gpt-5.6-sol": {
+        "inputCostPerToken": 0.000004,
+        "outputCostPerToken": 0.00002,
+        "cacheCreationInputTokenCost": 0.000005,
+        "cacheReadInputTokenCost": 0.0000004,
+        "fastMultiplier": 2.0
+      },
       "gpt-6-astra": {
         "inputCostPerToken": 0.00001,
         "outputCostPerToken": 0.00005,

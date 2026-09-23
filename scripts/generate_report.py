@@ -21,6 +21,7 @@ import html
 import json
 import os
 import re
+import shlex
 import subprocess
 from collections import defaultdict
 
@@ -31,7 +32,7 @@ PRICING_CONFIG = os.path.join(ROOT, ".ccusage", "ccusage.json")
 FAST_INCIDENTS = os.path.join(ROOT, ".ccusage", "codex-fast-incidents.json")
 CONFIG = os.path.join(ROOT, "config.json")
 CONFIG_SAMPLE = os.path.join(ROOT, "config.sample.json")
-CCUSAGE = "ccusage@20.0.17"
+CCUSAGE = "ccusage@20.0.24"
 
 
 def load_config(path: str | None = None) -> dict:
@@ -70,6 +71,31 @@ def load_config(path: str | None = None) -> dict:
     for m in machines:
         m.setdefault("label", m["id"])
         m.setdefault("remoteShell", "zsh -lc")
+        for key in ("claudeConfigDirs", "codexHomes"):
+            roots = m.get(key)
+            if roots is None:
+                continue
+            if (
+                not isinstance(roots, list)
+                or not roots
+                or any(
+                    not isinstance(root, str) or not os.path.isabs(root) or "," in root
+                    for root in roots
+                )
+                or len(set(roots)) != len(roots)
+            ):
+                raise SystemExit(f"{path}: {m['id']}.{key} needs unique absolute directory paths.")
+    expected = cfg.get("expectedAccounts") or {}
+    if not isinstance(expected, dict) or any(
+        key not in ("claude", "codex") or type(value) is not int or value < 1
+        for key, value in expected.items()
+    ):
+        raise SystemExit(f"{path}: expectedAccounts needs positive claude/codex counts.")
+    for provider, config_key in (("claude", "claudeConfigDirs"), ("codex", "codexHomes")):
+        if provider in expected and any(config_key not in m for m in machines):
+            raise SystemExit(
+                f"{path}: expectedAccounts.{provider} needs {config_key} on every machine."
+            )
     return cfg
 
 
@@ -395,8 +421,38 @@ def collect_machine(
     """
     npx = os.environ.get("NPX_BIN", "npx")
     ssh_target = machine.get("ssh")
+    source_roots = {
+        "CLAUDE_CONFIG_DIR": ("claudeConfigDirs", "projects"),
+        "CODEX_HOME": ("codexHomes", "sessions"),
+    }
+    source_env = {}
+    for variable, (config_key, data_dir) in source_roots.items():
+        roots = machine.get(config_key)
+        if not roots:
+            continue
+        for root in roots:
+            path = os.path.join(root, data_dir)
+            if ssh_target:
+                check = [
+                    "ssh",
+                    "-o",
+                    "ConnectTimeout=20",
+                    ssh_target,
+                    f"test -d {shlex.quote(path)}",
+                ]
+                if subprocess.run(check, capture_output=True).returncode:
+                    raise RuntimeError(
+                        f"{machine['id']}: configured {config_key} has no {data_dir}: {root}"
+                    )
+            elif not os.path.isdir(path):
+                raise RuntimeError(
+                    f"{machine['id']}: configured {config_key} has no {data_dir}: {root}"
+                )
+        source_env[variable] = ",".join(roots)
 
     if not ssh_target:
+        env = os.environ.copy()
+        env.update(source_env)
         unified = run(
             [
                 npx,
@@ -415,7 +471,8 @@ def collect_machine(
                 "--offline",
                 "--config",
                 PRICING_CONFIG,
-            ]
+            ],
+            env=env,
         )
         codex = run(
             [
@@ -436,7 +493,8 @@ def collect_machine(
                 "standard",
                 "--config",
                 PRICING_CONFIG,
-            ]
+            ],
+            env=env,
         )
         return normalize_codex_standard(unified, codex, live_date)
 
@@ -444,17 +502,22 @@ def collect_machine(
     remote_config = "/tmp/llm-usage-ccusage.json"
     run(["scp", "-q", "-o", "ConnectTimeout=20", PRICING_CONFIG, f"{ssh_target}:{remote_config}"])
     try:
-        remote = (
-            f'{shell} "npx -y {CCUSAGE} daily --since {since} --until {until} '
+        env_prefix = " ".join(f"{key}={shlex.quote(value)}" for key, value in source_env.items())
+        if env_prefix:
+            env_prefix += " "
+        unified_cmd = (
+            f"{env_prefix}npx -y {CCUSAGE} daily --since {since} --until {until} "
             f"--timezone {tz} --breakdown --by-agent --json --offline "
-            f'--config {remote_config}"'
+            f"--config {remote_config}"
         )
+        remote = f"{shell} {shlex.quote(unified_cmd)}"
         unified = run(["ssh", "-o", "ConnectTimeout=20", ssh_target, remote])
-        remote_codex = (
-            f'{shell} "npx -y {CCUSAGE} codex daily --since {since} '
+        codex_cmd = (
+            f"{env_prefix}npx -y {CCUSAGE} codex daily --since {since} "
             f"--until {until} --timezone {tz} --json --offline "
-            f'--speed standard --config {remote_config}"'
+            f"--speed standard --config {remote_config}"
         )
+        remote_codex = f"{shell} {shlex.quote(codex_cmd)}"
         codex = run(["ssh", "-o", "ConnectTimeout=20", ssh_target, remote_codex])
         return normalize_codex_standard(unified, codex, live_date)
     finally:
@@ -655,6 +718,26 @@ def summary_usd(v):
     return usd(v) if 0 < v < 1 else usd0(v)
 
 
+def account_coverage_note(cfg: dict) -> str:
+    expected = cfg.get("expectedAccounts") or {}
+    if not expected:
+        return ""
+    parts = []
+    for provider, config_key in (("claude", "claudeConfigDirs"), ("codex", "codexHomes")):
+        if provider in expected:
+            roots = sum(len(machine[config_key]) for machine in cfg["machines"])
+            label = "shared sign-ins" if provider == "codex" else "accounts"
+            parts.append(
+                f"{provider.title()}: {roots} checked log roots; {expected[provider]} {label} expected"
+            )
+    return (
+        "Account coverage: "
+        + "; ".join(parts)
+        + ". Sessions written under shared Codex sign-ins are included together but cannot be "
+        "verified or split by account. Only configured machines are included."
+    )
+
+
 def render_report(d: dict, period_label: str, refreshed: str = "", cfg: dict | None = None) -> str:
     cfg = cfg or {"machines": [], "timezone": "America/Chicago"}
     machines = cfg["machines"]
@@ -790,6 +873,7 @@ def render_report(d: dict, period_label: str, refreshed: str = "", cfg: dict | N
             f"Usage from {names} has no verified price in this snapshot and is "
             "excluded from the dollar totals."
         )
+    coverage_note = account_coverage_note(cfg)
     return TEMPLATE.format(
         title_period=period_label,
         sub_period=period_label,
@@ -818,6 +902,11 @@ def render_report(d: dict, period_label: str, refreshed: str = "", cfg: dict | N
         top_model_label=top_model[1].replace(" (Codex)", ""),
         top_model_total=usd0(d["model_totals"][top_model[0]]),
         unpriced_note=unpriced_note,
+        account_coverage_panel=(
+            f'<div class="panel"><h2>Account Coverage</h2><p>{coverage_note}</p></div>'
+            if coverage_note
+            else ""
+        ),
         labels_js=json.dumps(labels),
         agent_consts=agent_consts,
         agent_datasets=agent_datasets,
@@ -874,7 +963,7 @@ TEMPLATE = r"""<!doctype html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>LLM Coding Agent Usage — {title_period}</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
 <style>
   :root {{
     --bg: #0d1117; --card: #161b22; --border: #30363d;
@@ -976,6 +1065,8 @@ TEMPLATE = r"""<!doctype html>
       </table>
     </div>
   </div>
+
+  {account_coverage_panel}
 
   <div class="footnote">
     Per-model allocations come from <code>ccusage --breakdown</code> on each machine; totals are summed at full precision before display rounding.

@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import generate_report as report
 
@@ -52,6 +53,7 @@ class GenerateReportTests(unittest.TestCase):
 
     def test_new_model_prices_are_pinned(self):
         prices = json.loads(Path(report.PRICING_CONFIG).read_text())["defaults"]["pricingOverrides"]
+        self.assertEqual(prices["gpt-5.6-sol"]["outputCostPerToken"], 0.00002)
         self.assertEqual(prices["gpt-6-sol"]["cacheReadInputTokenCost"], 0.0000002)
         self.assertEqual(prices["gpt-6-luna"]["outputCostPerToken"], 0.0000005)
         self.assertEqual(prices["claude-opus-5-5"]["cacheReadInputTokenCost"], 0.0000002)
@@ -287,6 +289,63 @@ class GenerateReportTests(unittest.TestCase):
 
             with self.assertRaises(SystemExit):
                 report.load_config(self._write_config(tmp, {"machines": []}))
+
+            for roots in ([], ["relative/path"], ["/same", "/same"], ["/comma,path"]):
+                with self.subTest(roots=roots), self.assertRaises(SystemExit):
+                    report.load_config(
+                        self._write_config(tmp, {"machines": [{"id": "here", "codexHomes": roots}]})
+                    )
+
+            with self.assertRaises(SystemExit):
+                report.load_config(
+                    self._write_config(
+                        tmp, {"machines": [{"id": "here"}], "expectedAccounts": {"codex": 3}}
+                    )
+                )
+
+    def test_account_coverage_counts_roots_without_claiming_account_attribution(self):
+        cfg = {
+            "machines": [
+                {"claudeConfigDirs": ["/a"], "codexHomes": ["/b"]},
+                {"claudeConfigDirs": ["/c"], "codexHomes": ["/d"]},
+            ],
+            "expectedAccounts": {"claude": 2, "codex": 3},
+        }
+        note = report.account_coverage_note(cfg)
+        self.assertIn("Claude: 2 checked log roots; 2 accounts expected", note)
+        self.assertIn("Codex: 2 checked log roots; 3 shared sign-ins expected", note)
+        self.assertIn("cannot be verified or split by account", note)
+        self.assertIn("Only configured machines are included", note)
+
+    def test_configured_log_roots_reach_both_collector_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            claude = Path(tmp) / "claude"
+            codex = Path(tmp) / "codex"
+            (claude / "projects").mkdir(parents=True)
+            (codex / "sessions").mkdir(parents=True)
+            machine = {
+                "id": "machine-a",
+                "claudeConfigDirs": [str(claude)],
+                "codexHomes": [str(codex)],
+            }
+            with (
+                mock.patch.object(report, "run", return_value="{}") as collector,
+                mock.patch.object(report, "normalize_codex_standard", return_value="normalized"),
+            ):
+                result = report.collect_machine(machine, "2026-09-01", "2026-09-02", "UTC")
+            self.assertEqual(result, "normalized")
+            self.assertEqual(collector.call_count, 2)
+            for call in collector.call_args_list:
+                self.assertEqual(call.kwargs["env"]["CLAUDE_CONFIG_DIR"], str(claude))
+                self.assertEqual(call.kwargs["env"]["CODEX_HOME"], str(codex))
+
+    def test_missing_configured_log_root_stops_collection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            machine = {"id": "machine-a", "codexHomes": [str(Path(tmp) / "missing")]}
+            with mock.patch.object(report, "run") as collector:
+                with self.assertRaisesRegex(RuntimeError, "configured codexHomes has no sessions"):
+                    report.collect_machine(machine, "2026-09-01", "2026-09-02", "UTC")
+            collector.assert_not_called()
 
     def test_missing_config_points_at_the_sample(self):
         with tempfile.TemporaryDirectory() as tmp:
