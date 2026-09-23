@@ -17,6 +17,7 @@ See CLAUDE.md for the data-collection conventions this automates.
 import argparse
 import datetime as dt
 import glob
+import html
 import json
 import os
 import re
@@ -99,10 +100,14 @@ def month_bounds(year_month: str):
 
 MODEL_GROUPS = [
     ("fable5", "Fable 5", "#e3b341"),
+    ("fable51", "Fable 5.1", "#f1d270"),
     ("gpt55", "GPT-5.5 (Codex)", "#4f8cc9"),
     ("gpt56sol", "GPT-5.6 Sol (Codex)", "#79c0ff"),
     ("gpt6astra", "GPT-6 Astra (Codex)", "#39c5cf"),
+    ("gpt6sol", "GPT-6 Sol (Codex)", "#65d6ff"),
+    ("gpt6luna", "GPT-6 Luna (Codex)", "#a5e8ff"),
     ("opus5", "Opus 5", "#ffc4a3"),
+    ("opus55", "Opus 5.5", "#ffd9b8"),
     ("opus48", "Opus 4.8", "#f0a07a"),
     ("opus47", "Opus 4.7", "#d97757"),
     ("opusother", "Other Claude (Opus 4.5/4.6)", "#b86b4b"),
@@ -140,6 +145,10 @@ def group_of(model: str) -> str:
     model = normalize_model(model)
     if model == "gpt-6-astra" or re.fullmatch(r"gpt-6-astra-\d{4}-\d{2}-\d{2}", model):
         return "gpt6astra"
+    if model == "gpt-6-sol" or re.fullmatch(r"gpt-6-sol-\d{4}-\d{2}-\d{2}", model):
+        return "gpt6sol"
+    if model == "gpt-6-luna" or re.fullmatch(r"gpt-6-luna-\d{4}-\d{2}-\d{2}", model):
+        return "gpt6luna"
     if model.startswith("gpt-5.5"):
         return "gpt55"
     if model.startswith("gpt-5.6"):
@@ -150,6 +159,8 @@ def group_of(model: str) -> str:
     # but never a future minor line (claude-opus-5-1 would need its own group).
     if model == "claude-opus-5" or re.fullmatch(r"claude-opus-5-\d{8}", model):
         return "opus5"
+    if model == "claude-opus-5-5" or re.fullmatch(r"claude-opus-5-5-\d{8}", model):
+        return "opus55"
     if model == "claude-opus-4-8":
         return "opus48"
     if model == "claude-opus-4-7":
@@ -158,6 +169,8 @@ def group_of(model: str) -> str:
         return "opusother"
     if model == "claude-fable-5":
         return "fable5"
+    if model == "claude-fable-5-1" or re.fullmatch(r"claude-fable-5-1-\d{8}", model):
+        return "fable51"
     if model.startswith("claude-haiku"):
         return "haiku45"
     if model.startswith("claude-sonnet-4"):
@@ -626,6 +639,7 @@ def load(files: dict, dates: list):
         "day_tokens": day_tokens,
         "dates": dates,
         "fast_incidents": incidents,
+        "unpriced_models": sorted(unpriced),
     }
 
 
@@ -769,6 +783,13 @@ def render_report(d: dict, period_label: str, refreshed: str = "", cfg: dict | N
         if refreshed
         else ""
     )
+    unpriced_note = ""
+    if d.get("unpriced_models"):
+        names = ", ".join(html.escape(name) for name in d["unpriced_models"])
+        unpriced_note = (
+            f"Usage from {names} has no verified price in this snapshot and is "
+            "excluded from the dollar totals."
+        )
     return TEMPLATE.format(
         title_period=period_label,
         sub_period=period_label,
@@ -796,6 +817,7 @@ def render_report(d: dict, period_label: str, refreshed: str = "", cfg: dict | N
         highlight_rows=highlight_rows,
         top_model_label=top_model[1].replace(" (Codex)", ""),
         top_model_total=usd0(d["model_totals"][top_model[0]]),
+        unpriced_note=unpriced_note,
         labels_js=json.dumps(labels),
         agent_consts=agent_consts,
         agent_datasets=agent_datasets,
@@ -959,6 +981,7 @@ TEMPLATE = r"""<!doctype html>
     Per-model allocations come from <code>ccusage --breakdown</code> on each machine; totals are summed at full precision before display rounding.
     Top model this period: {top_model_label} ({top_model_total}). Codex spend covers all GPT models (gpt-6-astra, gpt-5.6-sol, etc.) from both the Codex CLI and Codex work delegated from Claude Code.
     Costs are API-equivalent estimates from token counts using a pinned offline pricing snapshot &mdash; not invoices or subscription-limit percentages.
+    {unpriced_note}
     Fable 5 rates are already 2&times; Opus 4.8; no extra multiplier is applied. ChatGPT fast-mode credit consumption is a separate plan metric and is excluded here.
     Generated from the saved per-machine raw snapshots.
   </div>

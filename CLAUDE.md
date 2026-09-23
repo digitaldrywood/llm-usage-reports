@@ -151,9 +151,10 @@ session.
    incidents are still recorded in `.ccusage/codex-fast-incidents.json` and
    printed to stdout (so the cron log is the alerting channel), but they no
    longer push the data below the fold.
-5. Model grouping convention: GPT-5.5, GPT-5.6 Sol (etc. per major GPT
-   model, all counted as Codex in the agent split), Opus 5, Opus 4.8, Opus 4.7,
-   Fable 5, Sonnet 5, Haiku 4.5, Sonnet 4.6, Gemini; fold trace GPT usage (e.g.
+5. Model grouping convention: GPT-5.5, GPT-5.6 Sol, GPT-6 Astra/Sol/Luna
+   (all counted as Codex in the agent split), Opus 5.5, Opus 5, Opus 4.8,
+   Opus 4.7, Fable 5.1, Fable 5, Sonnet 5, Haiku 4.5, Sonnet 4.6, Gemini;
+   fold trace GPT usage (e.g.
    gpt-5.4-mini) into "Other GPT (Codex)", older Opus (4.5/4.6) into "Other
    Claude", and trace Claude/Gemini usage into the matching provider family.
    When a new model ships, add it to MODEL_GROUPS + group_of() in
@@ -166,7 +167,8 @@ session.
    that reports tokens at $0 cost while belonging to a hosted provider we price
    (local Ollama models are legitimately free and are exempt). Either warning
    means the report is quietly undercounting and the run needs a code or
-   pricing-override change.
+   pricing-override change. The report footnote names remaining unpriced models
+   so published totals do not imply complete coverage.
 6. ccusage detects more sources than the four in `AGENTS` — `openclaw` and
    `opencode` both appear in the deeper history. Some of them report models
    with a bracketed agent prefix (`[openclaw] gpt-5.4`), which `normalize_model()`

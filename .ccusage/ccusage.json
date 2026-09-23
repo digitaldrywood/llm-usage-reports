@@ -15,6 +15,32 @@
         "cacheReadInputTokenCost": 0.000001,
         "fastMultiplier": 2.0
       },
+      "gpt-6-sol": {
+        "inputCostPerToken": 0.000002,
+        "outputCostPerToken": 0.00001,
+        "cacheCreationInputTokenCost": 0.0000025,
+        "cacheReadInputTokenCost": 0.0000002,
+        "fastMultiplier": 2.0
+      },
+      "gpt-6-luna": {
+        "inputCostPerToken": 0.0000001,
+        "outputCostPerToken": 0.0000005,
+        "cacheCreationInputTokenCost": 0.000000125,
+        "cacheReadInputTokenCost": 0.00000001,
+        "fastMultiplier": 2.0
+      },
+      "gemini-3.8-flash": {
+        "inputCostPerToken": 0.00000075,
+        "outputCostPerToken": 0.00000375,
+        "cacheCreationInputTokenCost": 0.00000075,
+        "cacheReadInputTokenCost": 0.000000075
+      },
+      "gemini-3.1-pro-preview-customtools": {
+        "inputCostPerToken": 0.000002,
+        "outputCostPerToken": 0.000012,
+        "cacheCreationInputTokenCost": 0.000002,
+        "cacheReadInputTokenCost": 0.0000002
+      },
       "gemini-3.5-flash": {
         "inputCostPerToken": 0.0000015,
         "outputCostPerToken": 0.000009,
@@ -26,6 +52,18 @@
         "outputCostPerToken": 0.000025,
         "cacheCreationInputTokenCost": 0.00000625,
         "cacheReadInputTokenCost": 0.0000005
+      },
+      "claude-opus-5-5": {
+        "inputCostPerToken": 0.000004,
+        "outputCostPerToken": 0.00002,
+        "cacheCreationInputTokenCost": 0.000005,
+        "cacheReadInputTokenCost": 0.0000002
+      },
+      "claude-fable-5-1": {
+        "inputCostPerToken": 0.00001,
+        "outputCostPerToken": 0.00005,
+        "cacheCreationInputTokenCost": 0.0000125,
+        "cacheReadInputTokenCost": 0.00000025
       },
       "claude-sonnet-5": {
         "inputCostPerToken": 0.000002,
