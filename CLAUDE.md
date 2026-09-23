@@ -103,12 +103,10 @@ python3 scripts/generate_report.py --collect --days 30
 
 The generator collects unified `--breakdown --by-agent` JSON on each machine,
 then runs a second source-specific `ccusage codex daily --speed standard` pass
-and reconciles the GPT model costs day by day. That second pass is required
-because ccusage 20.0.17's unified `daily` command does not honor
-`codex.defaults.speed`; on a machine currently configured for fast mode it can
-retroactively apply fast multipliers to old sessions. The checked-in offline
-config also supplies Sonnet 5's introductory price and Opus 5's rate, neither of
-which is reliably in ccusage 20.0.17's embedded snapshot.
+and reconciles the GPT model costs day by day. That second pass guards against
+the unified `daily` command using the currently configured Codex speed to
+revalue old sessions. The checked-in offline config pins current rates for
+models whose embedded snapshot may be stale.
 
 `--by-agent` is load-bearing, not cosmetic. Since 2026-07-19 the **`claude`
 agent also reports GPT rows** — Claude Code delegating to Codex through the
@@ -191,11 +189,21 @@ session.
   remains visible until its observed report window rolls out.
 - Cache reads dominate tokens (~97%); call that out rather than implying raw
   generation volume.
-- Pin the ccusage version (`ccusage@20.0.17` as of 2026-07) and use the offline
+- Pin the ccusage version (`ccusage@20.0.24` as of 2026-09) and use the offline
   pricing config so both machines compute identical, repeatable pricing. Online
   mode fetches live pricing and can retroactively revalue the same token logs.
-- Sonnet 5's override is the introductory $2/$10 per MTok rate through
-  2026-08-31. Review the config before the 2026-09-01 standard-price change.
+- Sonnet 5's override is $2/$10 per MTok; verify the published rate when
+  updating the pinned pricing snapshot.
+- The 20.0.17 → 20.0.24 collector upgrade changes historical estimates:
+  Claude now scopes message dedupe by session and retains additional usage;
+  Codex pricing includes GPT-5.6 Sol's current $4/$20 promotional rates. This
+  is an intentional collector version change, not newly created log data.
+- Optional `claudeConfigDirs` and `codexHomes` in each machine's ignored
+  `config.json` explicitly select all local log roots. Each listed root must
+  contain `projects/` or `sessions/`, respectively, or publishing stops. Claude
+  transcripts include account UUIDs, but Codex sessions do not include a
+  durable account ID. Switching Codex sign-ins in a shared home pools their
+  token history; separate per-account homes are needed for future attribution.
 - Opus 5's override is $5/$25 per MTok — the same rate card as Opus 4.8, so a
   4.8 → 5 migration should not move the cost line by itself. Cache-write is
   1.25x input and cache-read 0.1x input, matching the Sonnet 5 override's shape.

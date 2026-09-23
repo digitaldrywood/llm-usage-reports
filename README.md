@@ -85,6 +85,38 @@ login shell's PATH applies (needed when `npx` comes from Homebrew or a version
 manager). `id` determines the raw snapshot filename, so changing it starts a
 fresh one.
 
+### Multiple account profiles
+
+The collector reads session files, not subscription accounts. By default,
+ccusage scans the current OS user's Claude and Codex data directories. If an
+account uses a separate profile directory, list every root on that machine:
+
+```json
+{
+  "id": "workstation",
+  "label": "Workstation",
+  "claudeConfigDirs": ["/absolute/path/to/claude-profile"],
+  "codexHomes": ["/absolute/path/to/codex-profile-a", "/absolute/path/to/codex-profile-b"]
+}
+```
+
+The refresh verifies that each configured Claude root has `projects/` and each
+Codex root has `sessions/` before publishing. A missing root fails the run.
+`ccusage` supports multiple roots through `CLAUDE_CONFIG_DIR` and `CODEX_HOME`;
+the same roots are used for the unified and Codex reconciliation passes.
+Set optional `expectedAccounts` counts (for example,
+`{"claude": 2, "codex": 3}`) after listing explicit roots on every machine.
+The report shows checked roots alongside the expected sign-ins. This is a
+collection audit, not proof that each account wrote logs to a particular root.
+
+Switching sign-ins inside one Codex home leaves historical sessions in that
+shared directory. They are included in the combined total, but Codex session
+logs do not provide a reliable account ID for assigning historical token costs
+to each sign-in. Remote or cloud sessions without local log files are outside
+this report. For account-level cost attribution going forward, use a separate
+Codex home per account and include each home above. Subscription usage limits
+and reset times are a separate metric from these API-equivalent costs.
+
 ### Publishing
 
 **This project only writes HTML into `reports/`.** Where that goes is your
