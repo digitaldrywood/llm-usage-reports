@@ -152,6 +152,15 @@ The pinned collector's override schema only offers a 200K long-context threshold
 so this override uses short-context rates. Astra requests above 272K input tokens
 cost more and may be underestimated; see [Astra's pricing notes](https://developers.openai.com/api/docs/models/gpt-6-astra).
 
+The September 2026 snapshot also pins [GPT-6 Sol and Luna](https://developers.openai.com/api/docs/pricing),
+[Claude Opus 5.5](https://platform.claude.com/docs/en/models/opus-5-5/overview),
+[Claude Fable 5.1](https://platform.claude.com/docs/en/models/fable-5-1/overview),
+and the [Gemini 3.1 Pro custom-tools and 3.8 Flash rates](https://ai.google.dev/gemini-api/docs/pricing).
+The overrides use standard, short-context token rates; ccusage does not retain
+enough per-request detail to apply long-context or one-hour cache-write rates.
+If a logged model has no verified price, the generated report names it in the
+footnote and excludes it from the dollar totals.
+
 ## Layout
 
 ```

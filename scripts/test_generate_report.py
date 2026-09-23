@@ -36,6 +36,30 @@ class GenerateReportTests(unittest.TestCase):
         # A future minor line must not be silently mislabeled as Opus 5.
         self.assertNotEqual(report.group_of("claude-opus-5-1"), "opus5")
 
+    def test_new_model_groups_do_not_swallow_future_variants(self):
+        for model, group in (
+            ("gpt-6-sol", "gpt6sol"),
+            ("[openclaw] gpt-6-sol", "gpt6sol"),
+            ("gpt-6-luna", "gpt6luna"),
+            ("claude-opus-5-5", "opus55"),
+            ("claude-fable-5-1", "fable51"),
+        ):
+            with self.subTest(model=model):
+                self.assertEqual(report.group_of(model), group)
+        self.assertEqual(report.group_of("gpt-6-sol-pro"), "gptother")
+        self.assertEqual(report.group_of("claude-opus-5-6"), "opusother")
+        self.assertEqual(report.group_of("claude-fable-5-2"), "other")
+
+    def test_new_model_prices_are_pinned(self):
+        prices = json.loads(Path(report.PRICING_CONFIG).read_text())["defaults"]["pricingOverrides"]
+        self.assertEqual(prices["gpt-6-sol"]["cacheReadInputTokenCost"], 0.0000002)
+        self.assertEqual(prices["gpt-6-luna"]["outputCostPerToken"], 0.0000005)
+        self.assertEqual(prices["claude-opus-5-5"]["cacheReadInputTokenCost"], 0.0000002)
+        self.assertEqual(prices["claude-fable-5-1"]["cacheReadInputTokenCost"], 0.00000025)
+        self.assertEqual(
+            prices["gemini-3.1-pro-preview-customtools"]["outputCostPerToken"], 0.000012
+        )
+
     @staticmethod
     def _unified_day(period, codex_rows, claude_rows=()):
         agents = [{"agent": "codex", "modelBreakdowns": list(codex_rows)}]
